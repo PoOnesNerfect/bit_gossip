@@ -208,6 +208,10 @@ Below chart shows memory usage in bytes `B`.
 | 40000n, 79600e (200x200)   |         |         |         |          |   ~398 MB |   ~398 MB |
 | 102400n, 204160e (320x320) |         |         |         |          |           |  ~2.61 GB |
 
+## Features
+
+- **parallel**: Enable parallelism using Rayon; this feature is enabled by default.
+
 ## Background
 
 I am an avid day-dreamer. I am constantly thinking about solutions to problems, instead of

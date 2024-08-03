@@ -1,6 +1,10 @@
 //! Pathfinding library for calculating all node pairs' shortest paths in an unweighted undirected graph.
 //!
 //! See [prim] and [graph] modules for more information.
+//!
+//! ## Features
+//!
+//! - **parallel**: Enable parallelism using Rayon; this feature is enabled by default.
 
 pub mod prim;
 pub use prim::{
