@@ -9,7 +9,7 @@ documentation = "https://docs.rs/bit_gossip"
 repository = "https://github.com/poonesnerfect/bit_gossip"
 license = "MIT OR Apache-2.0"
 categories = ["algorithms", "data-structures", "mathematics", "game-development"]
-keywords = ["pathfinding", "gamedev", "graph", "search", "all-pairs", "shortest-path"]
+keywords = ["pathfinding", "graph", "search", "all-pairs", "shortest-path"]
 
 [features]
 default = ["parallel"]
