@@ -4,16 +4,16 @@
 [<img alt="crates.io" src="https://img.shields.io/crates/v/bit_gossip.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/bit_gossip)
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-bit_gossip-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/bit_gossip)
 
-**bit_gossip** is a simple pathfinding library for calculating all node pairs' shortest paths in an unweighted undirected graph.
+**bit_gossip**, named after its implementation technique, is a simple pathfinding library for calculating all node pairs' shortest paths in an unweighted undirected graph.
 
 Once the computation is complete, you can retrieve the shortest path between any two nodes in near constant time; I'm talking _few microseconds_!
 
-This library is ideal for, but not limited to, games where there are numerous entities that need to find the paths to a moving target.
+This library is ideal for, but not limited to, games where there are numerous entities that need to find the shortest paths to a moving target.
 
 The computation is fast enough to be used not only in static maps but also in dynamically changing maps in games.
 
-- Computing all paths for 100 nodes takes only a few microseconds on a modern CPU.
-- Computing all paths for 1000 nodes takes less than 50ms on a modern CPU.
+- Computing all paths for 100 nodes takes only a few hundred µs on a modern CPU.
+- Computing all paths for 1000 nodes takes less than 50 ms on a modern CPU.
 - Computing all paths for 10000 nodes only takes less a few seconds.
 
 See [benchmarks](#benchmarks) for more details.
