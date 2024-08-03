@@ -1,3 +1,72 @@
+//! graph implementations using primitive data types.
+//!
+//! If you know the maximum number of nodes is less than or equal to 16, 32, 64, or 128, use the corresponding graph type.
+//! If you think the number of nodes will exceed 128, use the general [Graph](crate::graph::Graph) implementation.
+//!
+//! Computing paths with these is over 3x faster than using the general [Graph](crate::graph::Graph) implementation.
+//! See [Benchmarks](https://github.com/PoOnesNerfect/bit_gossip#benchmarks) for more details.
+//!
+//! <br>
+//!
+//! **Panics** in debug mode if the number of nodes exceeds the maximum number of nodes for the graph type.
+//!
+//! In release mode, it will saturate at the maximum number of nodes.
+//!
+//! # Example
+//!
+//! ## Basic Usage
+//!
+//! ```sh
+//! 0 -- 1 -- 2 -- 3
+//! |         |    |
+//! 4 -- 5 -- 6 -- 7
+//! |         |    |
+//! 8 -- 9 -- 10 - 11
+//! ```
+//!
+//! ```
+//! use bit_gossip::Graph16;
+//!
+//! // Initialize a builder with 12 nodes
+//! let mut builder = Graph16::builder(12);
+//!
+//! // Connect the nodes
+//! for i in 0..12u8 {
+//!     if i % 4 != 3 {
+//!         builder.connect(i, i + 1);
+//!     }
+//!     if i < 8 {
+//!         builder.connect(i, i + 4);
+//!     }
+//! }
+//! builder.disconnect(1, 5);
+//! builder.disconnect(5, 9);
+//!
+//! // Build the graph
+//! let graph = builder.build();
+//!
+//! // Check the shortest path from 0 to 9
+//! assert_eq!(graph.next_node(0, 9), Some(4));
+//! assert_eq!(graph.next_node(4, 9), Some(8));
+//! assert_eq!(graph.next_node(8, 9), Some(9));
+//!
+//! // Both 1 and 4 can reach 11 in the shortest path.
+//! assert_eq!(graph.next_nodes(0, 11).collect::<Vec<_>>(), vec![1, 4]);
+//!
+//! // Get the path from 0 to 5
+//! assert_eq!(graph.path_to(0, 5).collect::<Vec<_>>(), vec![4, 5]);
+//! ```
+//!
+//! ## Do not exceed the maximum number of nodes for the graph type.
+//!
+//! ```should_panic
+//! use bit_gossip::Graph16;
+//!
+//! // This will panic in debug mode,
+//! // and saturate at 16 in release mode
+//! let mut builder = Graph16::builder(17);
+//! ```
+
 use crate::edge_id;
 use paste::paste;
 use std::{collections::HashMap, fmt::Debug};
@@ -6,32 +75,190 @@ use std::{collections::HashMap, fmt::Debug};
 macro_rules! impl_prim {
     ($node_bits:ty, $node_id:ty, $num:expr) => {
         paste! {
-            /// Number of nodes must be equal or lower than
-            /// than the bits in the data type used
-            /// ex) $node_bits has 16 bits, so max nodes = 16
-            /// ex) u64 has 64 bits, so max nodes = 64
+            #[doc = "Graph implementation using `" $node_bits "` as the node bits storage."]
+            ///
+            #[doc = "Number of nodes must be equal or lower than " $num "."]
+            ///
+            /// <br>
+            ///
+            /// **panics** in debug mode if given number of nodes exceeds
+            #[doc = $num "."]
+            ///
+            /// In release mode, it will saturate at the maximum number of nodes.
             #[derive(Debug, Clone)]
-            pub struct [< Map $num >] {
+            pub struct [< Graph $num >] {
                 pub nodes: [<Nodes $num>],
                 pub edges: HashMap<($node_id, $node_id), $node_bits>,
             }
 
-            impl [< Map $num >] {
-                pub fn builder(nodes_len: usize) -> [<Map $num Builder>] {
-                    [<Map $num Builder>]::new(nodes_len)
+            impl [< Graph $num >] {
+                pub fn builder(nodes_len: usize) -> [<Graph $num Builder>] {
+                    debug_assert!(nodes_len <= $num, "Number of nodes must be equal or lower than {}", $num);
+
+                    [<Graph $num Builder>]::new(nodes_len.min($num))
                 }
 
-                pub fn into_builder(self) -> [<Map $num Builder>] {
-                    [<Map $num Builder>] {
+                pub fn into_builder(self) -> [<Graph $num Builder>] {
+                    [<Graph $num Builder>] {
                         nodes: self.nodes,
                         edge_masks: [<Edges $num>] { inner: self.edges.iter().map(|(k, _)| (*k, 0)).collect() },
                         edges: [<Edges $num>] { inner: self.edges },
                     }
                 }
+
+                /// Given a current node and a destination node,
+                /// return the first neighboring node that is the shortest path to the destination node.
+                ///
+                /// This operation is very fast as all paths for all nodes are precomputed.
+                ///
+                /// `None` is returned when:
+                /// - `curr` and `dest` are the same node
+                /// - `curr` has no path to `dest`
+                ///
+                /// **Note:** In case there are multiple neighboring nodes that lead to the destination node,
+                /// the first one found will be returned. The same node will be returned for the same input.
+                /// However, the order of the nodes is not guaranteed.
+                ///
+                /// You can use [next_node_with](Self::next_node_with) to filter matching neighbors,
+                /// or [next_nodes](Self::next_nodes) to get all neighboring nodes.
+                #[inline]
+                pub fn next_node(&self, curr: $node_id, dest: $node_id) -> Option<$node_id> {
+                    self.next_nodes(curr, dest).next()
+                }
+
+                /// Given a current node and a destination node, and a filter function,
+                /// return the neighboring node of current that is the shortest path to the destination node.
+                ///
+                /// Same as `self.next_nodes(curr, dest).find(f)`
+                ///
+                /// This may be useful if you want some custom behavior when choosing the next node.
+                ///
+                /// **Ex)** In a game, you might want to randomize which path to take when there are multiple shortest paths.
+                ///
+                /// `None` is returned when:
+                /// - `curr` and `dest` are the same node
+                /// - `curr` has no path to `dest`
+                /// - The filter function returns `false` for all neighboring nodes
+                #[inline]
+                pub fn next_node_with(
+                    &self,
+                    curr: $node_id,
+                    dest: $node_id,
+                    f: impl Fn($node_id) -> bool,
+                ) -> Option<$node_id> {
+                    self.next_nodes(curr, dest).find(|&n| f(n))
+                }
+
+                /// Given a current node and a destination node,
+                /// return all neighboring nodes of current that are shortest paths to the destination node.
+                ///
+                /// The nodes will be returned in the same order for the same inputs. However, the ordering of the nodes is not guaranteed.
+                #[inline]
+                pub fn next_nodes(&self, curr: $node_id, dest: $node_id) -> [<NextNodesIter $num>]<'_> {
+                    [<NextNodesIter $num>] {
+                        graph: self,
+                        neighbors: self.nodes.neighbors(curr),
+                        curr,
+                        dest,
+                    }
+                }
+
+                /// Given a current node and a destination node,
+                /// return a path from the current node to the destination node.
+                ///
+                /// The path is a list of node IDs, starting with the next node (not current node!) and ending at the destination node.
+                #[inline]
+                pub fn path_to(&self, curr: $node_id, dest: $node_id) -> [<PathIter $num>]<'_> {
+                    [<PathIter $num>] {
+                        map: self,
+                        curr,
+                        dest,
+                        done: false,
+                    }
+                }
+
+                /// Return a list of all neighboring nodes of the given node.
+                #[inline]
+                pub fn neighbors(&self, node: $node_id) -> impl Iterator<Item = $node_id> + '_  {
+                    self.nodes.neighbors(node)
+                }
+
+                /// Return the number of nodes in this graph.
+                #[inline]
+                pub fn nodes_len(&self) -> usize {
+                    self.nodes.len()
+                }
+
+                /// Return the number of edges in this graph.
+                #[inline]
+                pub fn edges_len(&self) -> usize {
+                    self.edges.len()
+                }
             }
 
+            /// Iterator that returns a path from the current node to the destination node.
+            ///
+            /// Current node is not included in the path.
+            #[derive(Debug)]
+            pub struct [<PathIter $num>]<'a> {
+                map: &'a [<Graph $num>],
+                curr: $node_id,
+                dest: $node_id,
+                done: bool,
+            }
+
+            impl Iterator for [<PathIter $num>]<'_> {
+                type Item = $node_id;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    if self.done || self.curr == self.dest {
+                        return None;
+                    }
+
+                    let Some(next) = self.map.next_node(self.curr, self.dest) else {
+                        self.done = true;
+                        return None;
+                    };
+
+                    self.curr = next;
+
+                    Some(next)
+                }
+            }
+
+            /// Iterator that iterates neighboring nodes which are the shortest paths to the destination node.
+            #[derive(Debug)]
+            pub struct [<NextNodesIter $num>]<'a> {
+                graph: &'a [<Graph $num>],
+                curr: $node_id,
+                dest: $node_id,
+                neighbors: [<NodeBits $num Iter>],
+            }
+
+            impl Iterator for [<NextNodesIter $num>]<'_> {
+                type Item = $node_id;
+
+                fn next(&mut self) -> Option<Self::Item> {
+                    if self.curr == self.dest {
+                        return None;
+                    }
+
+                    while let Some(neighbor) = self.neighbors.next() {
+                        let bit = self.graph.edges.get(&edge_id(self.curr, neighbor))? & 1 << self.dest > 0;
+                        let bit = if self.curr > neighbor { !bit } else { bit };
+
+                        if bit {
+                            return Some(neighbor);
+                        }
+                    }
+
+                    None
+                }
+            }
+
+            #[doc = "Builder for the Graph" $num]
             #[derive(Debug, Clone)]
-            pub struct [<Map $num Builder>] {
+            pub struct [<Graph $num Builder>] {
                 pub nodes: [<Nodes $num>],
 
                 /// key: edge_id
@@ -44,7 +271,7 @@ macro_rules! impl_prim {
                 pub edge_masks: [<Edges $num>],
             }
 
-            impl [<Map $num Builder>] {
+            impl [<Graph $num Builder>] {
                 pub fn new(nodes_len: usize) -> Self {
                     Self {
                         nodes: [<Nodes $num>]::new(nodes_len),
@@ -98,7 +325,7 @@ macro_rules! impl_prim {
                     let _ = std::mem::replace(self, this);
                 }
 
-                pub fn build(self) -> [< Map $num >] {
+                pub fn build(self) -> [< Graph $num >] {
                     let Self {
                         nodes,
                         mut edges,
@@ -321,15 +548,18 @@ macro_rules! impl_prim {
                         active_neighbors_mask = 0;
                     }
 
-                    [< Map $num >] {
+                    [< Graph $num >] {
                         nodes,
                         edges: edges.inner,
                     }
                 }
             }
 
-            /// index: the node_index
-            /// value: the bit places of connected nodes are 1
+            /// Map of nodes and their neighbors.
+            ///
+            /// index: node_id
+            ///
+            #[doc = "value: " $node_bits " with neighbors' bit locations set to `true`"]
             #[derive(Debug, Clone)]
             pub struct [<Nodes $num>] {
                 pub inner: Vec<$node_bits>,
@@ -389,6 +619,7 @@ macro_rules! impl_prim {
                 }
             }
 
+            /// Map of edges and bits indicating if the edge is the shortest path to the node.
             #[derive(Debug, Clone)]
             pub struct [<Edges $num>] {
                 /// key: edge_id
@@ -431,6 +662,7 @@ macro_rules! impl_prim {
                 }
             }
 
+            /// Iterator that iterates through all nodes and their neighbors.
             pub struct [<Neighbors $num Iter>]<'a> {
                 neighbors: &'a [<Nodes $num>],
                 node: $node_id,
@@ -508,19 +740,18 @@ impl_prim!(u16, u8, 16);
 impl_prim!(u32, u8, 32);
 impl_prim!(u64, u8, 64);
 impl_prim!(u128, u8, 128);
-// impl_prim!(U1024, u16, 1024);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_map_16() {
+    fn test_graph_16() {
         pub const NODES_X_LEN: usize = 4;
         pub const NODES_Y_LEN: usize = 4;
         pub const NODES_LEN: usize = NODES_X_LEN * NODES_Y_LEN;
 
-        let mut builder = Map16Builder::new(NODES_LEN);
+        let mut builder = Graph16Builder::new(NODES_LEN);
 
         // place a edge between every adjacent node
         for y in 0..NODES_Y_LEN {
@@ -542,17 +773,17 @@ mod tests {
         }
 
         let now = std::time::Instant::now();
-        let _map = builder.build();
+        let _graph = builder.build();
         println!("Time: {:?}", now.elapsed());
     }
 
     #[test]
-    fn test_map_128() {
-        pub const NODES_X_LEN: usize = 8;
-        pub const NODES_Y_LEN: usize = 16;
+    fn test_graph_32() {
+        pub const NODES_X_LEN: usize = 4;
+        pub const NODES_Y_LEN: usize = 8;
         pub const NODES_LEN: usize = NODES_X_LEN * NODES_Y_LEN;
 
-        let mut builder = Map128Builder::new(NODES_LEN);
+        let mut builder = Graph32Builder::new(NODES_LEN);
 
         // place a edge between every adjacent node
         for y in 0..NODES_Y_LEN {
@@ -574,7 +805,71 @@ mod tests {
         }
 
         let now = std::time::Instant::now();
-        let _map = builder.build();
+        let _graph = builder.build();
+        println!("Time: {:?}", now.elapsed());
+    }
+
+    #[test]
+    fn test_graph_64() {
+        pub const NODES_X_LEN: usize = 8;
+        pub const NODES_Y_LEN: usize = 8;
+        pub const NODES_LEN: usize = NODES_X_LEN * NODES_Y_LEN;
+
+        let mut builder = Graph64Builder::new(NODES_LEN);
+
+        // place a edge between every adjacent node
+        for y in 0..NODES_Y_LEN {
+            for x in 0..NODES_X_LEN {
+                let node_id = y * NODES_X_LEN + x;
+
+                if x > 0 {
+                    let a = (node_id - 1) as u8;
+                    let b = node_id as u8;
+                    builder.connect(a, b);
+                }
+
+                if y > 0 {
+                    let a = node_id as u8;
+                    let b = (node_id - NODES_X_LEN) as u8;
+                    builder.connect(a, b);
+                }
+            }
+        }
+
+        let now = std::time::Instant::now();
+        let _graph = builder.build();
+        println!("Time: {:?}", now.elapsed());
+    }
+
+    #[test]
+    fn test_graph_128() {
+        pub const NODES_X_LEN: usize = 8;
+        pub const NODES_Y_LEN: usize = 16;
+        pub const NODES_LEN: usize = NODES_X_LEN * NODES_Y_LEN;
+
+        let mut builder = Graph128Builder::new(NODES_LEN);
+
+        // place a edge between every adjacent node
+        for y in 0..NODES_Y_LEN {
+            for x in 0..NODES_X_LEN {
+                let node_id = y * NODES_X_LEN + x;
+
+                if x > 0 {
+                    let a = (node_id - 1) as u8;
+                    let b = node_id as u8;
+                    builder.connect(a, b);
+                }
+
+                if y > 0 {
+                    let a = node_id as u8;
+                    let b = (node_id - NODES_X_LEN) as u8;
+                    builder.connect(a, b);
+                }
+            }
+        }
+
+        let now = std::time::Instant::now();
+        let _graph = builder.build();
         println!("Time: {:?}", now.elapsed());
     }
 }

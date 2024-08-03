@@ -1,3 +1,5 @@
+//! bit vector implementations for internal use.
+
 #[cfg(feature = "parallel")]
 mod atomic_bitvec;
 #[cfg(feature = "parallel")]

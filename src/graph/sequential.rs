@@ -1,19 +1,31 @@
+use super::sealed::U16orU32;
 use crate::{bitvec::BitVec, edge_id};
 use std::{collections::HashMap, fmt::Debug};
 
 #[derive(Debug, Clone)]
-pub struct BigMap {
-    pub nodes: Nodes,
-    pub edges: HashMap<(u16, u16), BitVec>,
+pub struct SeqGraph<NodeId: U16orU32 = u16> {
+    pub nodes: Nodes<NodeId>,
+    pub edges: HashMap<(NodeId, NodeId), BitVec>,
 }
 
-impl BigMap {
-    pub fn builder(nodes_len: usize) -> BigMapBuilder {
-        BigMapBuilder::new(nodes_len)
+impl<NodeId: U16orU32> SeqGraph<NodeId> {
+    /// Create a new SeqGraphBuilder with the given number of nodes.
+    ///
+    /// Default NodeId is u16, which can hold up to 65536 nodes.
+    /// If you need more nodes, you can specify u32 as the NodeId type, like `SeqGraph::<u32>::builder(100_000)`
+    #[inline]
+    pub fn builder(nodes_len: usize) -> SeqGraphBuilder<NodeId> {
+        debug_assert!(
+            nodes_len <= NodeId::MAX_LEN,
+            "Number of nodes exceeds the limit; Specify `u32` as the NodeId type, like `SeqGraph::<u32>::builder(100_000)`"
+        );
+
+        SeqGraphBuilder::new(nodes_len.min(NodeId::MAX_LEN))
     }
 
-    pub fn into_builder(self) -> BigMapBuilder {
-        BigMapBuilder {
+    #[inline]
+    pub fn into_builder(self) -> SeqGraphBuilder<NodeId> {
+        SeqGraphBuilder {
             edge_masks: Edges {
                 inner: self.edges.iter().map(|(k, _)| (*k, BitVec::ZERO)).collect(),
             },
@@ -21,23 +33,178 @@ impl BigMap {
             nodes: self.nodes,
         }
     }
+
+    /// Given a current node and a destination node,
+    /// return the first neighboring node that is the shortest path to the destination node.
+    ///
+    /// This operation is very fast as all paths for all nodes are precomputed.
+    ///
+    /// `None` is returned when:
+    /// - `curr` and `dest` are the same node
+    /// - `curr` has no path to `dest`
+    ///
+    /// **Note:** In case there are multiple neighboring nodes that lead to the destination node,
+    /// the first one found will be returned. The same node will be returned for the same input.
+    /// However, the order of the nodes is not guaranteed.
+    ///
+    /// If you would like to have some custom behavior when choosing the next node,
+    /// you can use the `next_node_with` method, or the `next_nodes` method to get all neighboring nodes.
+    #[inline]
+    pub fn next_node(&self, curr: NodeId, dest: NodeId) -> Option<NodeId> {
+        self.next_nodes(curr, dest).next()
+    }
+
+    /// Given a current node and a destination node, and a filter function,
+    /// return the neighboring node of current that is the shortest path to the destination node.
+    ///
+    /// Same as `self.next_nodes(curr, dest).find(f)`
+    ///
+    /// This may be useful if you want some custom behavior when choosing the next node.
+    ///
+    /// **Ex)** In a game, you might want to randomize which path to take when there are multiple shortest paths.
+    ///
+    /// `None` is returned when:
+    /// - `curr` and `dest` are the same node
+    /// - `curr` has no path to `dest`
+    /// - The filter function returns `false` for all neighboring nodes
+    #[inline]
+    pub fn next_node_with(
+        &self,
+        curr: NodeId,
+        dest: NodeId,
+        f: impl Fn(NodeId) -> bool,
+    ) -> Option<NodeId> {
+        self.next_nodes(curr, dest).find(|&n| f(n))
+    }
+
+    /// Given a current node and a destination node,
+    /// return all neighboring nodes of current that are shortest paths to the destination node.
+    ///
+    /// The nodes will be returned in the same order for the same inputs. However, the ordering of the nodes is not guaranteed.
+    #[inline]
+    pub fn next_nodes(&self, curr: NodeId, dest: NodeId) -> NextNodesIter<'_, NodeId> {
+        NextNodesIter {
+            graph: self,
+            neighbors: self.nodes.neighbors(curr).iter(),
+            curr,
+            dest,
+        }
+    }
+
+    /// Given a current node and a destination node,
+    /// return a path from the current node to the destination node.
+    ///
+    /// The path is a list of node IDs, starting with the next node (not current node!) and ending at the destination node.
+    #[inline]
+    pub fn path_to(&self, curr: NodeId, dest: NodeId) -> PathIter<'_, NodeId> {
+        PathIter {
+            map: self,
+            curr,
+            dest,
+            done: false,
+        }
+    }
+
+    /// Return a list of all neighboring nodes of the given node.
+    #[inline]
+    pub fn neighbors(&self, node: NodeId) -> &[NodeId] {
+        self.nodes.neighbors(node)
+    }
+
+    /// Return the number of nodes in this graph.
+    #[inline]
+    pub fn nodes_len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Return the number of edges in this graph.
+    #[inline]
+    pub fn edges_len(&self) -> usize {
+        self.edges.len()
+    }
+}
+
+/// An iterator that returns a path from the current node to the destination node.
+///
+/// Current node is not included in the path.
+#[derive(Debug)]
+pub struct PathIter<'a, NodeId: U16orU32> {
+    map: &'a SeqGraph<NodeId>,
+    curr: NodeId,
+    dest: NodeId,
+    done: bool,
+}
+
+impl<NodeId: U16orU32> Iterator for PathIter<'_, NodeId> {
+    type Item = NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done || self.curr == self.dest {
+            return None;
+        }
+
+        let Some(next) = self.map.next_node(self.curr, self.dest) else {
+            self.done = true;
+            return None;
+        };
+
+        self.curr = next;
+
+        Some(next)
+    }
+}
+
+#[derive(Debug)]
+pub struct NextNodesIter<'a, NodeId: U16orU32> {
+    graph: &'a SeqGraph<NodeId>,
+    curr: NodeId,
+    dest: NodeId,
+    neighbors: std::slice::Iter<'a, NodeId>,
+}
+
+impl<NodeId: U16orU32> Iterator for NextNodesIter<'_, NodeId> {
+    type Item = NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.curr == self.dest {
+            return None;
+        }
+
+        while let Some(&neighbor) = self.neighbors.next() {
+            let bit = self
+                .graph
+                .edges
+                .get(&edge_id(self.curr, neighbor))?
+                .get_bit(self.dest.as_usize());
+            let bit = if self.curr > neighbor { !bit } else { bit };
+
+            if bit {
+                return Some(neighbor);
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct BigMapBuilder {
-    pub nodes: Nodes,
+pub struct SeqGraphBuilder<NodeId: U16orU32> {
+    pub nodes: Nodes<NodeId>,
 
     /// key: edge_id
+    ///
     /// value: for each bit, if this edge is the shortest path
     /// to that bit location's node, bit is set to 1
-    pub edges: Edges,
+    pub edges: Edges<NodeId>,
 
     /// key: edge_id
+    ///
     /// value: for each edge, bit is set to 1 if the node is computed
-    pub edge_masks: Edges,
+    pub edge_masks: Edges<NodeId>,
 }
 
-impl BigMapBuilder {
+impl<NodeId: U16orU32> SeqGraphBuilder<NodeId> {
+    #[inline]
     pub fn new(nodes_len: usize) -> Self {
         Self {
             nodes: Nodes::new(nodes_len),
@@ -47,7 +214,8 @@ impl BigMapBuilder {
     }
 
     /// Add a edge between node_a and node_b
-    pub fn connect(&mut self, a: u16, b: u16) {
+    #[inline]
+    pub fn connect(&mut self, a: NodeId, b: NodeId) {
         self.nodes.connect(a, b);
 
         // edge value is flipped to b -> a, which means from node b's perspective, this edge is:
@@ -59,23 +227,24 @@ impl BigMapBuilder {
         let ab = edge_id(a, b);
 
         if let Some(edge) = self.edges.inner.get_mut(&ab) {
-            edge.set_bit(val as usize, true);
+            edge.set_bit(val.as_usize(), true);
         } else {
-            let edge = BitVec::one(val as usize);
+            let edge = BitVec::one(val.as_usize());
             self.edges.inner.insert(ab, edge);
         }
 
         if let Some(edge) = self.edge_masks.inner.get_mut(&ab) {
-            edge.set_bit(a as usize, true);
-            edge.set_bit(b as usize, true);
+            edge.set_bit(a.as_usize(), true);
+            edge.set_bit(b.as_usize(), true);
         } else {
-            let mut edge = BitVec::one(a.max(b) as usize);
-            edge.set_bit(a.min(b) as usize, true);
+            let mut edge = BitVec::one(a.max(b).as_usize());
+            edge.set_bit(a.min(b).as_usize(), true);
             self.edge_masks.inner.insert(ab, edge);
         }
     }
 
-    pub fn disconnect(&mut self, a: u16, b: u16) {
+    #[inline]
+    pub fn disconnect(&mut self, a: NodeId, b: NodeId) {
         // if the edge doesn't exist, return
         self.nodes.disconnect(a, b);
 
@@ -86,7 +255,8 @@ impl BigMapBuilder {
         }
     }
 
-    pub fn build(self) -> BigMap {
+    #[inline]
+    pub fn build(self) -> SeqGraph<NodeId> {
         let Self {
             nodes,
             mut edges,
@@ -98,9 +268,14 @@ impl BigMapBuilder {
         let mut neighbors_at_depth: Vec<(BitVec, BitVec)> = nodes
             .inner
             .iter()
-            .cloned()
             .enumerate()
-            .map(|(i, e)| (e, BitVec::one(i)))
+            .map(|(i, e)| {
+                let mut neighbors = BitVec::ZERO;
+                for n in e {
+                    neighbors.set_bit(n.as_usize(), true);
+                }
+                (neighbors, BitVec::one(i))
+            })
             .collect();
 
         let mut active_neighbors_mask = BitVec::ZERO;
@@ -114,8 +289,6 @@ impl BigMapBuilder {
 
         for (a, a_neighbors) in nodes.inner.iter().enumerate() {
             // setup
-            let a_neighbors = a_neighbors.iter_ones().collect::<Vec<_>>();
-
             // clear upserts
             neighbor_upserts.iter_mut().for_each(|(e1, e2, e3)| {
                 e1.clear();
@@ -132,6 +305,8 @@ impl BigMapBuilder {
             // for each edge in this node
             // set the bit value for a and b as 1
             for (i, b) in a_neighbors.iter().cloned().enumerate() {
+                let b = b.as_usize();
+
                 let mut val = true;
 
                 // edge value is flipped to b -> a, which means from node b's perspective, this edge is:
@@ -147,11 +322,14 @@ impl BigMapBuilder {
                     if i == j {
                         continue;
                     }
-                    let c = c as usize;
 
                     // if both b and c are in the same corner (tl or br)
                     // flip the bit
-                    let should_set = if (a > b) == (a > c) { !val } else { val };
+                    let should_set = if (a > b) == (a > c.as_usize()) {
+                        !val
+                    } else {
+                        val
+                    };
 
                     let (upsert, computed, _) = &mut neighbor_upserts[j];
                     if should_set {
@@ -161,9 +339,11 @@ impl BigMapBuilder {
                 }
             }
 
+            let a = NodeId::from_usize(a);
+
             // apply computed values
             for (b, upserts) in a_neighbors.into_iter().zip(neighbor_upserts.drain(..)) {
-                let ab = edge_id(a as u16, b as u16);
+                let ab = edge_id(a, *b);
 
                 let (upsert, computed, _) = upserts;
 
@@ -185,7 +365,10 @@ impl BigMapBuilder {
                     break;
                 }
 
-                let a_neighbors = nodes.neighbors(a as u16).iter_ones().collect::<Vec<_>>();
+                let a_usize = a;
+                let a = NodeId::from_usize(a);
+
+                let a_neighbors = nodes.neighbors(a);
 
                 // clear upserts
                 neighbor_upserts.iter_mut().for_each(|(e1, e2, e3)| {
@@ -209,7 +392,7 @@ impl BigMapBuilder {
                 // get all neighbors' masks
                 // so we can just reuse it
                 for (i, b) in a_neighbors.iter().copied().enumerate() {
-                    let mask = edge_masks.get(edge_id(a as u16, b as u16)).unwrap();
+                    let mask = edge_masks.get(edge_id(a, b)).unwrap();
                     neighbor_upserts[i].2 = mask.clone();
 
                     if !mask.eq(&full_mask) {
@@ -224,19 +407,21 @@ impl BigMapBuilder {
                 }
 
                 for (i, b) in a_neighbors.iter().copied().enumerate() {
-                    // neighbors' bits to gossip from edge a->b to other edges
-                    let mut neighbors_mask = neighbors_at_depth[b].0.clone();
+                    let b_usize = b.as_usize();
 
-                    neighbors_mask.set_bit(a, false);
+                    // neighbors' bits to gossip from edge a->b to other edges
+                    let mut neighbors_mask = neighbors_at_depth[b_usize].0.clone();
+
+                    neighbors_mask.set_bit(a_usize, false);
 
                     // if no neighbors to gossip at this depth, skip
                     if neighbors_mask.is_zero() {
                         continue;
                     }
 
-                    a_active_neighbors_mask.set_bit(b, true);
+                    a_active_neighbors_mask.set_bit(b_usize, true);
 
-                    let ab = edge_id(a as u16, b as u16);
+                    let ab = edge_id(a, b);
 
                     let val = edges.get(ab).unwrap();
 
@@ -266,7 +451,7 @@ impl BigMapBuilder {
 
                         // if both b and c are in the same corner (tl or br)
                         // flip the bit
-                        if (a > b) == (a > c) {
+                        if (a_usize > b_usize) == (a_usize > c.as_usize()) {
                             upsert.bitor_not_and_assign(val, &compute_mask);
                         } else {
                             upsert.bitor_and_assign(val, &compute_mask);
@@ -283,7 +468,7 @@ impl BigMapBuilder {
                 } else {
                     for (b, upserts) in a_neighbors.iter().copied().zip(neighbor_upserts.drain(..))
                     {
-                        let ab = edge_id(a as u16, b as u16);
+                        let ab = edge_id(a, b);
 
                         let (upsert, computed, _) = upserts;
 
@@ -300,7 +485,7 @@ impl BigMapBuilder {
             }
 
             for a in &set_done_list {
-                done_nodes.set_bit(*a, true);
+                done_nodes.set_bit(a.as_usize(), true);
             }
             set_done_list.clear();
 
@@ -320,7 +505,9 @@ impl BigMapBuilder {
 
                 let mut new_neighbors = BitVec::ZERO;
                 for b in a_neighbors_at_depth.iter_ones() {
-                    new_neighbors.bitor_assign(nodes.neighbors(b as u16));
+                    for c in nodes.neighbors(NodeId::from_usize(b)) {
+                        new_neighbors.set_bit(c.as_usize(), true);
+                    }
                 }
 
                 // new neighbors at this depth without the previous neighbors
@@ -331,51 +518,89 @@ impl BigMapBuilder {
             active_neighbors_mask.clear();
         }
 
-        BigMap {
+        SeqGraph {
             nodes,
             edges: edges.inner,
         }
     }
+
+    /// Return the number of nodes in this graph.
+    #[inline]
+    pub fn nodes_len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Return the number of edges in this graph.
+    #[inline]
+    pub fn edges_len(&self) -> usize {
+        self.edges.inner.len()
+    }
 }
 
-/// index: the node_index
-/// value: the bit places of connected nodes are 1
+/// Map of nodes and their neighbors.
+///
+/// index: node_id
+///
+/// value: neighbors of node
 #[derive(Debug, Clone)]
-pub struct Nodes {
-    pub inner: Vec<BitVec>,
+pub struct Nodes<NodeId: U16orU32> {
+    pub inner: Vec<Vec<NodeId>>,
 }
 
-impl Nodes {
+impl<NodeId: U16orU32> Nodes<NodeId> {
+    #[inline]
     pub fn new(nodes_len: usize) -> Self {
         Self {
-            inner: vec![BitVec::ZERO; nodes_len],
+            inner: vec![vec![]; nodes_len],
+        }
+    }
+
+    #[inline]
+    pub fn resize(&mut self, nodes_len: usize) {
+        self.inner.resize(nodes_len, vec![]);
+
+        if nodes_len < self.inner.len() {
+            let nodes_len = NodeId::from_usize(nodes_len);
+
+            for neighbors in self.inner.iter_mut() {
+                neighbors.retain(|&i| i < nodes_len);
+            }
         }
     }
 
     /// Get the neighboring nodes
     #[inline]
-    pub fn neighbors(&self, node: u16) -> &BitVec {
-        &self.inner[node as usize]
+    pub fn neighbors(&self, node: NodeId) -> &[NodeId] {
+        &self.inner[node.as_usize()]
     }
 
     /// Add a edge between node_a and node_b
-    pub fn connect(&mut self, a: u16, b: u16) {
+    #[inline]
+    pub fn connect(&mut self, a: NodeId, b: NodeId) {
         if a == b {
             return;
         }
 
-        self.inner[a as usize].set_bit(b as usize, true);
-        self.inner[b as usize].set_bit(a as usize, true);
+        if !self.inner[a.as_usize()].contains(&b) {
+            self.inner[a.as_usize()].push(b);
+        }
+
+        self.inner[b.as_usize()].push(a);
     }
 
     /// Remove a edge between node_a and node_b
-    pub fn disconnect(&mut self, a: u16, b: u16) {
+    #[inline]
+    pub fn disconnect(&mut self, a: NodeId, b: NodeId) {
         if a == b {
             return;
         }
 
-        self.inner[a as usize].set_bit(b as usize, false);
-        self.inner[b as usize].set_bit(a as usize, false);
+        if let Some(index) = self.inner[a.as_usize()].iter().position(|&x| x == b) {
+            self.inner[a.as_usize()].swap_remove(index);
+        }
+        if let Some(index) = self.inner[b.as_usize()].iter().position(|&x| x == a) {
+            self.inner[b.as_usize()].swap_remove(index);
+        }
     }
 
     #[inline]
@@ -384,28 +609,40 @@ impl Nodes {
     }
 }
 
+/// Map of edges and their shortest paths to other nodes.
+///
+/// key: edge_id
+///
+/// value: for each bit, if this edge is the shortest path
+/// to that bit location's node, bit is set to 1
 #[derive(Debug, Clone)]
-pub struct Edges {
+pub struct Edges<NodeId: U16orU32> {
     /// key: edge_id
+    ///
     /// value: for each bit, if this edge is the shortest path
     /// to that bit location's node, bit is set to 1
-    inner: HashMap<(u16, u16), BitVec>,
+    inner: HashMap<(NodeId, NodeId), BitVec>,
 }
 
-impl Edges {
+impl<NodeId: U16orU32> Edges<NodeId> {
+    #[inline]
     fn new() -> Self {
         Self {
             inner: HashMap::new(),
         }
     }
 
+    /// Return the shortest-paths-indicating bit vector.
     #[inline]
-    pub fn get(&self, edge_id: (u16, u16)) -> Option<&BitVec> {
+    pub fn get(&self, edge_id: (NodeId, NodeId)) -> Option<&BitVec> {
         self.inner.get(&edge_id)
     }
 
+    /// Insert a new edge with its shortest paths.
+    ///
+    /// If the edge already exists, the shortest paths will be merged.
     #[inline]
-    pub fn insert(&mut self, edge_id: (u16, u16), val: BitVec) {
+    pub fn insert(&mut self, edge_id: (NodeId, NodeId), val: BitVec) {
         if let Some(bits) = self.inner.get_mut(&edge_id) {
             bits.bitor_assign(&val);
         } else {
@@ -418,13 +655,14 @@ impl Edges {
 mod tests {
     use super::*;
 
+    #[ignore]
     #[test]
-    fn test_big_map() {
-        pub const NODES_X_LEN: usize = 32;
-        pub const NODES_Y_LEN: usize = 32;
+    fn test_seq_graph() {
+        pub const NODES_X_LEN: usize = 100;
+        pub const NODES_Y_LEN: usize = 200;
         pub const NODES_LEN: usize = NODES_X_LEN * NODES_Y_LEN;
 
-        let mut builder = BigMapBuilder::new(NODES_LEN);
+        let mut builder = SeqGraphBuilder::new(NODES_LEN);
 
         // place a edge between every adjacent node
         for y in 0..NODES_Y_LEN {

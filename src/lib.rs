@@ -1,13 +1,15 @@
+//! Pathfinding library for calculating all node pairs' shortest paths in an unweighted undirected graph.
+//!
+//! See [prim] and [graph] modules for more information.
+
 pub mod prim;
-pub use prim::*;
+pub use prim::{
+    Graph128, Graph128Builder, Graph16, Graph16Builder, Graph32, Graph32Builder, Graph64,
+    Graph64Builder,
+};
 
-pub mod bigmap;
-pub use bigmap::{BigMap, BigMapBuilder};
-
-#[cfg(feature = "parallel")]
-pub mod parallel;
-#[cfg(feature = "parallel")]
-pub use parallel::{ParaMap, ParaMapBuilder};
+pub mod graph;
+pub use graph::{Graph, GraphBuilder};
 
 pub mod bitvec;
 

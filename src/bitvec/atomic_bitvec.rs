@@ -5,17 +5,18 @@ use super::{
 use std::fmt;
 use std::sync::atomic::Ordering::Relaxed;
 
-/// Represents an array of atomic digits.
+/// An array of atomic digits to work with underlying bits.
 ///
-/// AtomicBitVec must be initialized with maximum number of the bits that will be used.
+/// Uses `AtomicU64` for 64-bit architecture and `AtomicU32` for 32-bit architecture.
+///
+/// `AtomicBitVec` must be initialized with **maximum number of the bits** that will be used.
 /// Although the internal data structure is a vec, the data structure itself
 /// should be considered a fixed-size array.
-/// This is because we only want to pass around the AtomicBitVec by reference,
-/// which means we cannot resize the vec itself.
-/// We can only mutate the atomic values that it holds.
+/// This is because we only want to pass around the `AtomicBitVec` by reference,
+/// which means we cannot resize the vec itself, but only mutate the internal data.
 ///
-/// This means that AtomicBitVec is inherently less efficient than BitVec.
-/// However, when used in parallel, it is necessary to use atomic values.
+/// This means that AtomicBitVec is inherently less efficient than [BitVec].
+/// However, to process and mutate values in parallel, it is necessary to use atomic values.
 pub struct AtomicBitVec(pub Vec<AtomicDigit>);
 
 impl AtomicBitVec {
@@ -145,6 +146,7 @@ impl AtomicBitVec {
 }
 
 impl AtomicBitVec {
+    /// Checks if two bitvecs are equal.
     pub fn eq(&self, other: &BitVec) -> bool {
         if self.0.len() != other.0.len() {
             return false;
@@ -155,9 +157,8 @@ impl AtomicBitVec {
             .zip(other.0.iter())
             .all(|(a, b)| a.load(Relaxed) == *b)
     }
-}
 
-impl AtomicBitVec {
+    /// a |= b
     pub fn bitor_assign(&self, rhs: &BitVec) {
         for (a, b) in self.0.iter().zip(rhs.0.iter()) {
             if *b != 0 {
@@ -166,6 +167,7 @@ impl AtomicBitVec {
         }
     }
 
+    /// a |= b
     pub fn bitor_assign_atomic(&self, rhs: &AtomicBitVec) {
         for (a, b) in self.0.iter().zip(rhs.0.iter()) {
             let b = b.load(Relaxed);

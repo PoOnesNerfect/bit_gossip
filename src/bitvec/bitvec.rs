@@ -4,7 +4,18 @@ use super::{
 };
 use std::fmt;
 
-/// Represents an arbitrary length of bits.
+/// An array of digits to work with underlying bits.
+///
+/// Uses `u64` for 64-bit architecture and `u32` for 32-bit architecture.
+///
+/// Implementation is inspired by the `num-bigint` and `bitvec` crates.
+///
+/// Reasons for not using exiting crates:
+/// - too many features that I dont't need,
+/// - dont't have the specific behaviors that I want, and
+/// - lack the convenience methods I need.
+///
+/// This data structure is very bare with the absolute minimum functionalities implemented.
 #[derive(Clone)]
 pub struct BitVec(pub Vec<Digit>);
 
@@ -12,11 +23,7 @@ impl BitVec {
     /// Initialize with empty vector.
     pub const ZERO: Self = Self(Vec::new());
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(Vec::with_capacity(capacity))
-    }
-
-    /// Initialize with a one bit at the given bit index.
+    /// Initialize with a `true` bit at the given bit index.
     #[inline]
     pub fn one(bit_index: usize) -> Self {
         let (i, j) = (bit_index / BITS, bit_index % BITS);
@@ -49,6 +56,8 @@ impl BitVec {
     }
 
     /// Set the bit at the given index to the given value.
+    ///
+    /// If the bit index is out of range, it will resize the array.
     #[inline]
     pub fn set_bit(&mut self, bit_index: usize, value: bool) {
         let (i, j) = (bit_index / BITS, bit_index % BITS);
@@ -72,6 +81,8 @@ impl BitVec {
     }
 
     /// Get the bit at the given index.
+    ///
+    /// If the bit index is out of range, it will return `false`.
     #[inline]
     pub fn get_bit(&self, bit_index: usize) -> bool {
         let (i, j) = (bit_index / BITS, bit_index % BITS);
@@ -81,16 +92,21 @@ impl BitVec {
         (self.0[i] & (1 << j)) != 0
     }
 
+    /// Count the number of 1's in the bit vector.
     #[inline]
     pub fn count_ones(&self) -> usize {
         self.0.iter().map(|x| x.count_ones() as usize).sum()
     }
 
+    /// Check if the bit vector is all zeros.
+    ///
+    /// Internally, it just checks that the vector is empty.
     #[inline]
     pub fn is_zero(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Iterate over bits and return the bit index of each `true` bits.
     #[inline]
     pub fn iter_ones(&self) -> IterOnes {
         IterOnes {
@@ -100,6 +116,9 @@ impl BitVec {
         }
     }
 
+    /// Iterate over bits and return the bit index of each `false` bits.
+    ///
+    /// Note that this iterator will continue to return zeros even after the array is exhausted.
     #[inline]
     pub fn iter_zeros(&self) -> IterZeros {
         IterZeros {
@@ -126,6 +145,7 @@ impl BitVec {
 }
 
 impl BitVec {
+    /// Check if all bits are the same.
     pub fn eq(&self, other: &Self) -> bool {
         if self.0.len() != other.0.len() {
             return false;
@@ -133,9 +153,8 @@ impl BitVec {
 
         self.0.iter().zip(other.0.iter()).all(|(a, b)| a == b)
     }
-}
 
-impl BitVec {
+    /// a = a & b
     pub fn bitand_assign(&mut self, rhs: &Self) {
         if self.is_zero() {
             return;
@@ -175,6 +194,8 @@ impl BitVec {
     }
 
     /// a = a & !b
+    ///
+    /// Takes an `AtomicBitVec` as the right-hand side.
     pub fn bitand_not_assign_atomic(&mut self, rhs: &AtomicBitVec) {
         if self.is_zero() {
             return;
@@ -190,9 +211,8 @@ impl BitVec {
 
         self.normalize();
     }
-}
 
-impl BitVec {
+    /// a = a | b
     pub fn bitor_assign(&mut self, rhs: &Self) {
         if rhs.is_zero() {
             return;
@@ -257,9 +277,8 @@ impl BitVec {
             self.normalize();
         }
     }
-}
 
-impl BitVec {
+    /// a = a ^ b
     pub fn bitxor_assign(&mut self, rhs: &Self) {
         if self.is_zero() {
             return;
@@ -278,9 +297,10 @@ impl BitVec {
 
         self.normalize();
     }
-}
 
-impl BitVec {
+    /// a = !a
+    ///
+    /// Even when the array is exhausted, it will set bits to 1 until the given bit length.
     pub fn not_assign(&mut self, bit_len: usize) {
         let last = bit_len / BITS;
         let shift = bit_len % BITS;
@@ -299,6 +319,9 @@ impl BitVec {
         self.normalize();
     }
 
+    /// !a
+    ///
+    /// Even when the array is exhausted, it will set bits to 1 until the given bit length.
     pub fn not(&self, bit_len: usize) -> Self {
         let mut res = self.clone();
         res.not_assign(bit_len);

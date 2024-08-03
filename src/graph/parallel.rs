@@ -1,3 +1,4 @@
+use super::sealed::U16orU32;
 use crate::{
     bitvec::{AtomicBitVec, BitVec},
     edge_id,
@@ -6,20 +7,30 @@ use rayon::prelude::*;
 use std::{collections::HashMap, fmt::Debug};
 
 #[derive(Debug)]
-pub struct ParaMap {
-    pub nodes: Nodes,
-    pub edges: HashMap<(u16, u16), AtomicBitVec>,
+pub struct ParaGraph<NodeId: U16orU32 = u16> {
+    pub nodes: Nodes<NodeId>,
+    pub edges: HashMap<(NodeId, NodeId), AtomicBitVec>,
 }
 
-impl ParaMap {
-    /// Create a new ParaMapBuilder with the given number of nodes.
-    pub fn builder(nodes_len: usize) -> ParaMapBuilder {
-        ParaMapBuilder::new(nodes_len)
+impl<NodeId: U16orU32> ParaGraph<NodeId> {
+    /// Create a new ParaGraphBuilder with the given number of nodes.
+    ///
+    /// Default NodeId is u16, which can hold up to 65536 nodes.
+    /// If you need more nodes, you can specify u32 as the NodeId type, like `ParaGraph::<u32>::builder(100_000)`
+    #[inline]
+    pub fn builder(nodes_len: usize) -> ParaGraphBuilder<NodeId> {
+        assert!(
+            nodes_len <= NodeId::MAX_LEN,
+            "Number of nodes exceeds the limit; Specify `u32` as the NodeId type, like `ParaGraph::<u32>::builder(100_000)`"
+        );
+
+        ParaGraphBuilder::new(nodes_len.min(NodeId::MAX_LEN))
     }
 
-    /// Convert this ParaMap into a ParaMapBuilder.
-    pub fn into_builder(self) -> ParaMapBuilder {
-        ParaMapBuilder {
+    /// Convert this ParaGraph into a ParaGraphBuilder.
+    #[inline]
+    pub fn into_builder(self) -> ParaGraphBuilder<NodeId> {
+        ParaGraphBuilder {
             edge_masks: Edges {
                 inner: self
                     .edges
@@ -33,44 +44,68 @@ impl ParaMap {
     }
 
     /// Given a current node and a destination node,
-    /// return the neighboring node of current that is the shortest path to the destination node.
+    /// return the first neighboring node that is the shortest path to the destination node.
     ///
-    /// In case there are multiple neighboring nodes that lead to the shortest path,
+    /// This operation is very fast as all paths for all nodes are precomputed.
+    ///
+    /// `None` is returned when:
+    /// - `curr` and `dest` are the same node
+    /// - `curr` has no path to `dest`
+    ///
+    /// **Note:** In case there are multiple neighboring nodes that lead to the destination node,
     /// the first one found will be returned. The same node will be returned for the same input.
     /// However, the order of the nodes is not guaranteed.
-    pub fn next_node(&self, curr: u16, dest: u16) -> Option<u16> {
-        if curr == dest {
-            return None;
-        }
+    ///
+    /// If you would like to have some custom behavior when choosing the next node,
+    /// you can use the `next_node_with` method, or the `next_nodes` method to get all neighboring nodes.
+    #[inline]
+    pub fn next_node(&self, curr: NodeId, dest: NodeId) -> Option<NodeId> {
+        self.next_nodes(curr, dest).next()
+    }
 
-        self.nodes
-            .neighbors(curr)
-            .iter()
-            .copied()
-            .find(|&neighbor| self.edges[&edge_id(curr, neighbor)].get_bit(dest as usize))
+    /// Given a current node and a destination node, and a filter function,
+    /// return the neighboring node of current that is the shortest path to the destination node.
+    ///
+    /// Same as `self.next_nodes(curr, dest).find(f)`
+    ///
+    /// This may be useful if you want some custom behavior when choosing the next node.
+    ///
+    /// **Ex)** In a game, you might want to randomize which path to take when there are multiple shortest paths.
+    ///
+    /// `None` is returned when:
+    /// - `curr` and `dest` are the same node
+    /// - `curr` has no path to `dest`
+    /// - The filter function returns `false` for all neighboring nodes
+    #[inline]
+    pub fn next_node_with(
+        &self,
+        curr: NodeId,
+        dest: NodeId,
+        f: impl Fn(NodeId) -> bool,
+    ) -> Option<NodeId> {
+        self.next_nodes(curr, dest).find(|&n| f(n))
     }
 
     /// Given a current node and a destination node,
     /// return all neighboring nodes of current that are shortest paths to the destination node.
     ///
     /// The nodes will be returned in the same order for the same inputs. However, the ordering of the nodes is not guaranteed.
-    pub fn next_nodes(&self, curr: u16, dest: u16) -> Vec<u16> {
-        if curr == dest {
-            return vec![];
+    #[inline]
+    pub fn next_nodes(&self, curr: NodeId, dest: NodeId) -> NextNodesIter<'_, NodeId> {
+        NextNodesIter {
+            graph: self,
+            neighbors: self.nodes.neighbors(curr).iter(),
+            curr,
+            dest,
         }
-
-        self.nodes
-            .neighbors(curr)
-            .iter()
-            .copied()
-            .filter(|&neighbor| self.edges[&edge_id(curr, neighbor)].get_bit(dest as usize))
-            .collect()
     }
 
     /// Given a current node and a destination node,
     /// return a path from the current node to the destination node.
-    /// The path is a list of node IDs, starting from the current node and ending at the destination node.
-    pub fn path_to(&self, curr: u16, dest: u16) -> PathIter {
+    ///
+    /// The path is a list of node IDs, starting with the next node (not current node!) and ending at the destination node.
+    #[inline]
+    pub fn path_to(&self, curr: NodeId, dest: NodeId) -> PathIter<'_, NodeId> {
         PathIter {
             map: self,
             curr,
@@ -80,21 +115,37 @@ impl ParaMap {
     }
 
     /// Return a list of all neighboring nodes of the given node.
-    pub fn neighbors(&self, node: u16) -> &[u16] {
+    #[inline]
+    pub fn neighbors(&self, node: NodeId) -> &[NodeId] {
         self.nodes.neighbors(node)
+    }
+
+    /// Return the number of nodes in this graph.
+    #[inline]
+    pub fn nodes_len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Return the number of edges in this graph.
+    #[inline]
+    pub fn edges_len(&self) -> usize {
+        self.edges.len()
     }
 }
 
+/// An iterator that returns a path from the current node to the destination node.
+///
+/// Current node is not included in the path.
 #[derive(Debug)]
-pub struct PathIter<'a> {
-    map: &'a ParaMap,
-    curr: u16,
-    dest: u16,
+pub struct PathIter<'a, NodeId: U16orU32> {
+    map: &'a ParaGraph<NodeId>,
+    curr: NodeId,
+    dest: NodeId,
     done: bool,
 }
 
-impl Iterator for PathIter<'_> {
-    type Item = u16;
+impl<NodeId: U16orU32> Iterator for PathIter<'_, NodeId> {
+    type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done || self.curr == self.dest {
@@ -113,23 +164,58 @@ impl Iterator for PathIter<'_> {
 }
 
 #[derive(Debug)]
-pub struct ParaMapBuilder {
+pub struct NextNodesIter<'a, NodeId: U16orU32> {
+    graph: &'a ParaGraph<NodeId>,
+    curr: NodeId,
+    dest: NodeId,
+    neighbors: std::slice::Iter<'a, NodeId>,
+}
+
+impl<NodeId: U16orU32> Iterator for NextNodesIter<'_, NodeId> {
+    type Item = NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.curr == self.dest {
+            return None;
+        }
+
+        while let Some(&neighbor) = self.neighbors.next() {
+            let bit = self
+                .graph
+                .edges
+                .get(&edge_id(self.curr, neighbor))?
+                .get_bit(self.dest.as_usize());
+            let bit = if self.curr > neighbor { !bit } else { bit };
+
+            if bit {
+                return Some(neighbor);
+            }
+        }
+
+        None
+    }
+}
+
+/// A builder for creating a ParaGraph.
+#[derive(Debug)]
+pub struct ParaGraphBuilder<NodeId: U16orU32> {
     /// key: node_id
     /// value: neighbors of node
-    pub nodes: Nodes,
+    pub nodes: Nodes<NodeId>,
 
     /// key: edge_id
     /// value: for each bit, if this edge is the shortest path
     /// to that bit location's node, bit is set to 1
-    pub edges: Edges,
+    pub edges: Edges<NodeId>,
 
     /// key: edge_id
     /// value: for each edge, bit is set to 1 if the node with the bit location is computed for this edge
-    pub edge_masks: Edges,
+    pub edge_masks: Edges<NodeId>,
 }
 
-impl ParaMapBuilder {
-    /// Create a new ParaMapBuilder with the given number of nodes.
+impl<NodeId: U16orU32> ParaGraphBuilder<NodeId> {
+    /// Create a new ParaGraphBuilder with the given number of nodes.
+    #[inline]
     pub fn new(nodes_len: usize) -> Self {
         Self {
             nodes: Nodes::new(nodes_len),
@@ -139,7 +225,7 @@ impl ParaMapBuilder {
     }
 
     /// Add an edge between node_a and node_b
-    pub fn connect(&mut self, a: u16, b: u16) {
+    pub fn connect(&mut self, a: NodeId, b: NodeId) {
         self.nodes.connect(a, b);
 
         // edge value is flipped to b -> a, which means from node b's perspective, this edge is:
@@ -151,27 +237,27 @@ impl ParaMapBuilder {
         let ab = edge_id(a, b);
 
         if let Some(edge) = self.edges.inner.get_mut(&ab) {
-            edge.set_bit(val as usize, true);
+            edge.set_bit(val.as_usize(), true);
         } else {
-            let edge = AtomicBitVec::one(val as usize, self.nodes.len());
+            let edge = AtomicBitVec::one(val.as_usize(), self.nodes.len());
 
             self.edges.inner.insert(ab, edge);
         }
 
         if let Some(edge) = self.edge_masks.inner.get_mut(&ab) {
-            edge.set_bit(a as usize, true);
-            edge.set_bit(b as usize, true);
+            edge.set_bit(a.as_usize(), true);
+            edge.set_bit(b.as_usize(), true);
         } else {
             let edge = AtomicBitVec::zeros(self.nodes.len());
-            edge.set_bit(a as usize, true);
-            edge.set_bit(b as usize, true);
+            edge.set_bit(a.as_usize(), true);
+            edge.set_bit(b.as_usize(), true);
 
             self.edge_masks.inner.insert(ab, edge);
         }
     }
 
-    /// Remove an edge between node_a and node
-    pub fn disconnect(&mut self, a: u16, b: u16) {
+    /// Remove an edge between node_a and node_b
+    pub fn disconnect(&mut self, a: NodeId, b: NodeId) {
         // if the edge doesn't exist, return
         self.nodes.disconnect(a, b);
 
@@ -182,8 +268,8 @@ impl ParaMapBuilder {
         }
     }
 
-    /// Build the ParaMap from the current state of the builder.
-    pub fn build(self) -> ParaMap {
+    /// Build the ParaGraph from the current state of the builder.
+    pub fn build(self) -> ParaGraph<NodeId> {
         let Self {
             nodes,
             edges,
@@ -201,7 +287,7 @@ impl ParaMapBuilder {
             .map(|(i, e)| {
                 let neighbors = AtomicBitVec::zeros(nodes.len());
                 for n in e {
-                    neighbors.set_bit(*n as usize, true);
+                    neighbors.set_bit(n.as_usize(), true);
                 }
                 (neighbors, AtomicBitVec::one(i, nodes.len()))
             })
@@ -225,10 +311,12 @@ impl ParaMapBuilder {
                     let mut neighbor_upserts: Vec<(BitVec, BitVec)> =
                         vec![(BitVec::ZERO, BitVec::ZERO); a_neighbors.len()];
 
+                    let a = NodeId::from_usize(a);
+
                     // for each edge in this node
                     // set the bit value for a and b as 1
                     for (i, b) in a_neighbors.iter().cloned().enumerate() {
-                        let b = b as usize;
+                        let b_usize = b.as_usize();
 
                         let mut val = true;
 
@@ -245,7 +333,6 @@ impl ParaMapBuilder {
                             if i == j {
                                 continue;
                             }
-                            let c = c as usize;
 
                             // if both b and c are in the same corner (tl or br)
                             // flip the bit
@@ -253,15 +340,15 @@ impl ParaMapBuilder {
 
                             let (upsert, computed) = &mut neighbor_upserts[j];
                             if should_set {
-                                upsert.set_bit(b, true);
+                                upsert.set_bit(b_usize, true);
                             }
-                            computed.set_bit(b, true);
+                            computed.set_bit(b_usize, true);
                         }
                     }
 
                     // apply computed values
                     for (b, upserts) in a_neighbors.iter().zip(neighbor_upserts.drain(..)) {
-                        let ab = edge_id(a as u16, *b);
+                        let ab = edge_id(a, *b);
 
                         let (upsert, computed) = upserts;
 
@@ -287,7 +374,10 @@ impl ParaMapBuilder {
                             break;
                         }
 
-                        let a_neighbors = nodes.neighbors(a as u16);
+                        let a_usize = a;
+                        let a = NodeId::from_usize(a);
+
+                        let a_neighbors = nodes.neighbors(a);
 
                         let mut neighbor_upserts: Vec<(BitVec, BitVec)> =
                             vec![(BitVec::ZERO, BitVec::ZERO); a_neighbors.len()];
@@ -304,7 +394,7 @@ impl ParaMapBuilder {
                         let mut neighbor_masks = Vec::with_capacity(a_neighbors.len());
 
                         for b in a_neighbors.iter().copied() {
-                            let mask = edge_masks.get(edge_id(a as u16, b as u16)).unwrap();
+                            let mask = edge_masks.get(edge_id(a, b)).unwrap();
                             neighbor_masks.push(mask);
 
                             if !mask.eq(&full_mask) {
@@ -313,27 +403,27 @@ impl ParaMapBuilder {
                         }
 
                         if all_edges_done {
-                            done_nodes.set_bit(a, true);
+                            done_nodes.set_bit(a_usize, true);
 
                             continue;
                         }
 
                         for (i, b) in a_neighbors.iter().copied().enumerate() {
-                            let b = b as usize;
+                            let b_usize = b.as_usize();
 
                             // neighbors' bits to gossip from edge a->b to other edges
-                            let mut neighbors_mask = neighbors_at_depth[b].0.into_bitvec();
+                            let mut neighbors_mask = neighbors_at_depth[b_usize].0.into_bitvec();
 
-                            neighbors_mask.set_bit(a, false);
+                            neighbors_mask.set_bit(a_usize, false);
 
                             // if no neighbors to gossip at this depth, skip
                             if neighbors_mask.is_zero() {
                                 continue;
                             }
 
-                            a_active_neighbors_mask.set_bit(b, true);
+                            a_active_neighbors_mask.set_bit(b_usize, true);
 
-                            let ab = edge_id(a as u16, b as u16);
+                            let ab = edge_id(a, b);
 
                             let val = edges.get(ab).unwrap().into_bitvec();
 
@@ -343,7 +433,6 @@ impl ParaMapBuilder {
                                 if i == j {
                                     continue;
                                 }
-                                let c = c as usize;
 
                                 let mask_ac = neighbor_masks[j];
                                 if mask_ac.eq(&full_mask) {
@@ -377,12 +466,12 @@ impl ParaMapBuilder {
                         // if all edges are computed or none of a's neighbors are active,
                         // then a is done
                         if all_edges_done || a_active_neighbors_mask.is_zero() {
-                            done_nodes.set_bit(a, true);
+                            done_nodes.set_bit(a_usize, true);
                         } else {
                             for (b, upserts) in
                                 a_neighbors.iter().copied().zip(neighbor_upserts.drain(..))
                             {
-                                let ab = edge_id(a as u16, b as u16);
+                                let ab = edge_id(a, b);
 
                                 let (upsert, computed) = upserts;
 
@@ -420,8 +509,8 @@ impl ParaMapBuilder {
 
                         let mut new_neighbors = BitVec::ZERO;
                         for b in a_neighbors_at_depth.iter_ones() {
-                            for c in nodes.neighbors(b as u16) {
-                                new_neighbors.set_bit(*c as usize, true);
+                            for c in nodes.neighbors(NodeId::from_usize(b)) {
+                                new_neighbors.set_bit(c.as_usize(), true);
                             }
                         }
 
@@ -434,21 +523,37 @@ impl ParaMapBuilder {
             active_neighbors_mask.clear();
         }
 
-        ParaMap {
+        ParaGraph {
             nodes,
             edges: edges.inner,
         }
     }
+
+    /// Return the number of nodes in this graph.
+    #[inline]
+    pub fn nodes_len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Return the number of edges in this graph.
+    #[inline]
+    pub fn edges_len(&self) -> usize {
+        self.edges.inner.len()
+    }
 }
 
-/// index: the node_id
+/// Map of nodes and their neighbors.
+///
+/// index: node_id
+///
 /// value: neighbors of node
 #[derive(Debug, Clone)]
-pub struct Nodes {
-    pub inner: Vec<Vec<u16>>,
+pub struct Nodes<NodeId: U16orU32> {
+    pub inner: Vec<Vec<NodeId>>,
 }
 
-impl Nodes {
+impl<NodeId: U16orU32> Nodes<NodeId> {
+    #[inline]
     pub fn new(nodes_len: usize) -> Self {
         Self {
             inner: vec![vec![]; nodes_len],
@@ -459,7 +564,7 @@ impl Nodes {
         self.inner.resize(nodes_len, vec![]);
 
         if nodes_len < self.inner.len() {
-            let nodes_len = nodes_len as u16;
+            let nodes_len = NodeId::from_usize(nodes_len);
 
             for neighbors in self.inner.iter_mut() {
                 neighbors.retain(|&i| i < nodes_len);
@@ -469,34 +574,34 @@ impl Nodes {
 
     /// Get the neighboring nodes
     #[inline]
-    pub fn neighbors(&self, node: u16) -> &[u16] {
-        &self.inner[node as usize]
+    pub fn neighbors(&self, node: NodeId) -> &[NodeId] {
+        &self.inner[node.as_usize()]
     }
 
     /// Add a edge between node_a and node_b
-    pub fn connect(&mut self, a: u16, b: u16) {
+    pub fn connect(&mut self, a: NodeId, b: NodeId) {
         if a == b {
             return;
         }
 
-        if !self.inner[a as usize].contains(&b) {
-            self.inner[a as usize].push(b);
+        if !self.inner[a.as_usize()].contains(&b) {
+            self.inner[a.as_usize()].push(b);
         }
 
-        self.inner[b as usize].push(a);
+        self.inner[b.as_usize()].push(a);
     }
 
     /// Remove a edge between node_a and node_b
-    pub fn disconnect(&mut self, a: u16, b: u16) {
+    pub fn disconnect(&mut self, a: NodeId, b: NodeId) {
         if a == b {
             return;
         }
 
-        if let Some(index) = self.inner[a as usize].iter().position(|&x| x == b) {
-            self.inner[a as usize].swap_remove(index);
+        if let Some(index) = self.inner[a.as_usize()].iter().position(|&x| x == b) {
+            self.inner[a.as_usize()].swap_remove(index);
         }
-        if let Some(index) = self.inner[b as usize].iter().position(|&x| x == a) {
-            self.inner[b as usize].swap_remove(index);
+        if let Some(index) = self.inner[b.as_usize()].iter().position(|&x| x == a) {
+            self.inner[b.as_usize()].swap_remove(index);
         }
     }
 
@@ -506,28 +611,40 @@ impl Nodes {
     }
 }
 
+/// Map of edges and their shortest paths to other nodes.
+///
+/// key: edge_id
+///
+/// value: for each bit, if this edge is the shortest path
+/// to that bit location's node, bit is set to 1
 #[derive(Debug)]
-pub struct Edges {
+pub struct Edges<NodeId: U16orU32> {
     /// key: edge_id
+    ///
     /// value: for each bit, if this edge is the shortest path
     /// to that bit location's node, bit is set to 1
-    inner: HashMap<(u16, u16), AtomicBitVec>,
+    inner: HashMap<(NodeId, NodeId), AtomicBitVec>,
 }
 
-impl Edges {
+impl<NodeId: U16orU32> Edges<NodeId> {
+    #[inline]
     fn new() -> Self {
         Self {
             inner: HashMap::new(),
         }
     }
 
+    /// Return the shortest-paths-indicating bit vector.
     #[inline]
-    pub fn get(&self, edge_id: (u16, u16)) -> Option<&AtomicBitVec> {
+    pub fn get(&self, edge_id: (NodeId, NodeId)) -> Option<&AtomicBitVec> {
         self.inner.get(&edge_id)
     }
 
+    /// Insert a new edge with its shortest paths.
+    ///
+    /// If the edge already exists, the shortest paths will be merged.
     #[inline]
-    pub fn insert(&mut self, edge_id: (u16, u16), val: BitVec, nodes_len: usize) {
+    pub fn insert(&mut self, edge_id: (NodeId, NodeId), val: BitVec, nodes_len: usize) {
         if let Some(bits) = self.inner.get_mut(&edge_id) {
             bits.bitor_assign(&val);
         } else {
@@ -536,8 +653,9 @@ impl Edges {
         }
     }
 
+    /// Update the shortest paths for the given edge.
     #[inline]
-    pub fn update(&self, edge_id: (u16, u16), val: BitVec) {
+    pub fn update(&self, edge_id: (NodeId, NodeId), val: BitVec) {
         if let Some(bits) = self.inner.get(&edge_id) {
             bits.bitor_assign(&val);
         }
@@ -548,15 +666,18 @@ impl Edges {
 mod tests {
     use super::*;
 
+    #[ignore]
     #[test]
-    fn test_para_map() {
-        pub const NODES_X_LEN: usize = 80;
-        pub const NODES_Y_LEN: usize = 80;
-        pub const NODES_LEN: usize = NODES_X_LEN * NODES_Y_LEN;
+    fn test_para_graph() {
+        type NodeId = u32;
+
+        pub const NODES_X_LEN: NodeId = 200;
+        pub const NODES_Y_LEN: NodeId = 100;
+        pub const NODES_LEN: NodeId = NODES_X_LEN * NODES_Y_LEN;
 
         let now = std::time::Instant::now();
 
-        let mut builder = ParaMapBuilder::new(NODES_LEN);
+        let mut builder = ParaGraphBuilder::new(NODES_LEN as usize);
 
         // place a edge between every adjacent node
         for y in 0..NODES_Y_LEN {
@@ -564,14 +685,14 @@ mod tests {
                 let node_id = y * NODES_X_LEN + x;
 
                 if x > 0 {
-                    let a = (node_id - 1) as u16;
-                    let b = node_id as u16;
+                    let a = node_id - 1;
+                    let b = node_id;
                     builder.connect(a, b);
                 }
 
                 if y > 0 {
-                    let a = node_id as u16;
-                    let b = (node_id - NODES_X_LEN) as u16;
+                    let a = node_id;
+                    let b = node_id - NODES_X_LEN;
                     builder.connect(a, b);
                 }
             }
@@ -580,10 +701,7 @@ mod tests {
         println!("Setup Time: {:?}", now.elapsed());
 
         let now = std::time::Instant::now();
-        let _map = builder.build();
+        let _graph = builder.build();
         println!("Build Time: {:?}", now.elapsed());
-
-        // std::thread::sleep(std::time::Duration::from_secs(20));
-        // drop(map);
     }
 }
