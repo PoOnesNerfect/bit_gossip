@@ -1,10 +1,10 @@
-use bit_gossip::Graph;
+use bit_gossip::{maze, Graph};
 use pathfinding::prelude::astar;
 
 type NodeId = u16;
 
-const GRID_WIDTH: NodeId = 25;
-const GRID_HEIGHT: NodeId = 25;
+const GRID_WIDTH: NodeId = 30;
+const GRID_HEIGHT: NodeId = 30;
 const GRID_SIZE: NodeId = GRID_WIDTH * GRID_HEIGHT;
 
 fn main() {
@@ -23,10 +23,8 @@ fn main() {
 
     // Check the shortest path from 0 to 9900
     // This is fast
-    let mut curr = 0;
-    let dest = 98;
-
-    // println!("path exists: {}", graph.path_exists(curr, dest));
+    let curr = 0;
+    let dest = 898;
 
     let node_to_pos = |node: NodeId| (node % 100, node / 100);
 
@@ -48,16 +46,12 @@ fn main() {
     .0;
 
     println!("astar path found in {:?}", now.elapsed());
-    // println!("{:?}", astar_path);
 
     let now = std::time::Instant::now();
 
-    // let path = graph.path_to(curr, dest).collect::<Vec<_>>();
-    // println!("{:?}", path);
-
-    let next = graph.next_node(curr, dest).unwrap();
+    let path = graph.path_to(curr, dest).collect::<Vec<_>>();
 
     println!("bit gossip path found in {:?}", now.elapsed());
 
-    assert_eq!(astar_path[1], next as NodeId);
+    assert_eq!(astar_path, path);
 }

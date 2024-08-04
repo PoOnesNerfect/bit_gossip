@@ -27,7 +27,12 @@ impl<NodeId: U16orU32> ParaGraph<NodeId> {
         ParaGraphBuilder::new(nodes_len.min(NodeId::MAX_NODES))
     }
 
-    /// Convert this ParaGraph into a ParaGraphBuilder.
+    /// Converts this graph into a builder.
+    ///
+    /// This is useful if you want to update the graph,
+    /// like resizing nodes or adding/removing edges.
+    ///
+    /// Then you can build the graph again.
     #[inline]
     pub fn into_builder(self) -> ParaGraphBuilder<NodeId> {
         ParaGraphBuilder {
@@ -56,17 +61,17 @@ impl<NodeId: U16orU32> ParaGraph<NodeId> {
     /// the first one found will be returned. The same node will be returned for the same input.
     /// However, the order of the nodes is not guaranteed.
     ///
-    /// If you would like to have some custom behavior when choosing the next node,
-    /// you can use the `next_node_with` method, or the `next_nodes` method to get all neighboring nodes.
+    /// You can use [neighbor_to_with](Self::neighbor_to_with) to filter matching neighbors,
+    /// or [neighbors_to](Self::neighbors_to) to get all neighboring nodes.
     #[inline]
-    pub fn next_node(&self, curr: NodeId, dest: NodeId) -> Option<NodeId> {
-        self.next_nodes(curr, dest).next()
+    pub fn neighbor_to(&self, curr: NodeId, dest: NodeId) -> Option<NodeId> {
+        self.neighbors_to(curr, dest).next()
     }
 
     /// Given a current node and a destination node, and a filter function,
     /// return the neighboring node of current that is the shortest path to the destination node.
     ///
-    /// Same as `self.next_nodes(curr, dest).find(f)`
+    /// Same as `self.neighbors_to(curr, dest).find(f)`
     ///
     /// This may be useful if you want some custom behavior when choosing the next node.
     ///
@@ -77,13 +82,13 @@ impl<NodeId: U16orU32> ParaGraph<NodeId> {
     /// - `curr` has no path to `dest`
     /// - The filter function returns `false` for all neighboring nodes
     #[inline]
-    pub fn next_node_with(
+    pub fn neighbor_to_with(
         &self,
         curr: NodeId,
         dest: NodeId,
         f: impl Fn(NodeId) -> bool,
     ) -> Option<NodeId> {
-        self.next_nodes(curr, dest).find(|&n| f(n))
+        self.neighbors_to(curr, dest).find(|&n| f(n))
     }
 
     /// Given a current node and a destination node,
@@ -91,8 +96,8 @@ impl<NodeId: U16orU32> ParaGraph<NodeId> {
     ///
     /// The nodes will be returned in the same order for the same inputs. However, the ordering of the nodes is not guaranteed.
     #[inline]
-    pub fn next_nodes(&self, curr: NodeId, dest: NodeId) -> NextNodesIter<'_, NodeId> {
-        NextNodesIter {
+    pub fn neighbors_to(&self, curr: NodeId, dest: NodeId) -> NeighborsToIter<'_, NodeId> {
+        NeighborsToIter {
             graph: self,
             neighbors: self.nodes.neighbors(curr).iter(),
             curr,
@@ -103,20 +108,25 @@ impl<NodeId: U16orU32> ParaGraph<NodeId> {
     /// Given a current node and a destination node,
     /// return a path from the current node to the destination node.
     ///
-    /// The path is a list of node IDs, starting with the next node (not current node!) and ending at the destination node.
+    /// The path is a list of node IDs, starting with current node and ending at the destination node.
+    ///
+    /// This is same as calling `.neighbor_to` repeatedly until the destination node is reached.
+    ///
+    /// If there is no path, the list will be empty.
     #[inline]
     pub fn path_to(&self, curr: NodeId, dest: NodeId) -> PathIter<'_, NodeId> {
         PathIter {
             map: self,
             curr,
             dest,
+            init: false,
         }
     }
 
     /// Check if there is a path from the current node to the destination node.
     #[inline]
     pub fn path_exists(&self, curr: NodeId, dest: NodeId) -> bool {
-        self.next_node(curr, dest).is_some()
+        self.neighbor_to(curr, dest).is_some()
     }
 
     /// Return a list of all neighboring nodes of the given node.
@@ -139,24 +149,24 @@ impl<NodeId: U16orU32> ParaGraph<NodeId> {
 }
 
 /// An iterator that returns a path from the current node to the destination node.
-///
-/// Current node is not included in the path.
 #[derive(Debug)]
 pub struct PathIter<'a, NodeId: U16orU32> {
     map: &'a ParaGraph<NodeId>,
     curr: NodeId,
     dest: NodeId,
+    init: bool,
 }
 
 impl<NodeId: U16orU32> Iterator for PathIter<'_, NodeId> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == self.dest {
-            return None;
+        if !self.init {
+            self.init = true;
+            return Some(self.curr);
         }
 
-        let Some(next) = self.map.next_node(self.curr, self.dest) else {
+        let Some(next) = self.map.neighbor_to(self.curr, self.dest) else {
             return None;
         };
 
@@ -166,17 +176,19 @@ impl<NodeId: U16orU32> Iterator for PathIter<'_, NodeId> {
     }
 }
 
+/// An iterator that returns neighboring nodes that are shortest paths to the destination node.
 #[derive(Debug)]
-pub struct NextNodesIter<'a, NodeId: U16orU32> {
+pub struct NeighborsToIter<'a, NodeId: U16orU32> {
     graph: &'a ParaGraph<NodeId>,
     curr: NodeId,
     dest: NodeId,
     neighbors: std::slice::Iter<'a, NodeId>,
 }
 
-impl<NodeId: U16orU32> Iterator for NextNodesIter<'_, NodeId> {
+impl<NodeId: U16orU32> Iterator for NeighborsToIter<'_, NodeId> {
     type Item = NodeId;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.curr == self.dest {
             return None;
@@ -203,6 +215,7 @@ impl<NodeId: U16orU32> Iterator for NextNodesIter<'_, NodeId> {
 #[derive(Debug)]
 pub struct ParaGraphBuilder<NodeId: U16orU32> {
     /// key: node_id
+    ///
     /// value: neighbors of node
     pub nodes: Nodes<NodeId>,
 

@@ -6,15 +6,21 @@
 
 **bit_gossip**, named after its implementation technique, is a simple pathfinding library for calculating all node pairs' shortest paths in an unweighted undirected graph.
 
-Once the computation is complete, you can retrieve the shortest path between any two nodes in near constant time; I'm talking _few microseconds_!
+Once the computation is complete, you can retrieve the shortest path between any two nodes in near constant time; I'm talking less than a microsecond!
 
-This library is ideal for, but not limited to, games where there are numerous entities that need to find the shortest paths to a moving target.
+This library is for you if your game:
 
-The computation is fast enough to be used not only in static maps but also in dynamically changing maps in games.
+- has decent number of nodes/tiles (~1000), and
+- has hundreds or thousands of entities that need to find paths to a moving target.
+
+If you have a static map of large number of nodes (>80,000),
+you can use this library to compute all paths during the loading phase.
+
+Also, computation is fast enough to be used not only in static maps but also in dynamically changing maps in games.
 
 - Computing all paths for 100 nodes takes only a few hundred µs on a modern CPU.
 - Computing all paths for 1000 nodes takes less than 50 ms on a modern CPU.
-- Computing all paths for 10000 nodes only takes less a few seconds.
+- Computing all paths for 10000 nodes takes less a few seconds.
 
 See [benchmarks](#benchmarks) for more details.
 
@@ -57,15 +63,15 @@ builder.disconnect(5, 9);
 let graph = builder.build();
 
 // Check the shortest path from 0 to 9
-assert_eq!(graph.next_node(0, 9), Some(4));
-assert_eq!(graph.next_node(4, 9), Some(8));
-assert_eq!(graph.next_node(8, 9), Some(9));
+assert_eq!(graph.neighbor_to(0, 9), Some(4));
+assert_eq!(graph.neighbor_to(4, 9), Some(8));
+assert_eq!(graph.neighbor_to(8, 9), Some(9));
 
 // Both 1 and 4 can reach 11 in the shortest path.
-assert_eq!(graph.next_nodes(0, 11).collect::<Vec<_>>(), vec![1, 4]);
+assert_eq!(graph.neighbors_to(0, 11).collect::<Vec<_>>(), vec![1, 4]);
 
 // Get the path from 0 to 5
-assert_eq!(graph.path_to(0, 5).collect::<Vec<_>>(), vec![4, 5]);
+assert_eq!(graph.path_to(0, 5).collect::<Vec<_>>(), vec![0, 4, 5]);
 ```
 
 ### Large Graphs
@@ -76,7 +82,7 @@ If the environment allows multi-threading, `Graph` will process paths in paralle
 
 In this example, let's create a 100x100 grid graph.
 
-```rust
+```no_run
 use bit_gossip::Graph;
 
 // Initialize a builder with 10000 nodes
@@ -109,7 +115,7 @@ let mut hops = 0;
 
 while curr != dest {
     let prev = curr;
-    curr = graph.next_node(curr, dest).unwrap();
+    curr = graph.neighbor_to(curr, dest).unwrap();
     println!("{prev} -> {curr}");
 
     hops += 1;

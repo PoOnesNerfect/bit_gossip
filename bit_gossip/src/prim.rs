@@ -46,15 +46,15 @@
 //! let graph = builder.build();
 //!
 //! // Check the shortest path from 0 to 9
-//! assert_eq!(graph.next_node(0, 9), Some(4));
-//! assert_eq!(graph.next_node(4, 9), Some(8));
-//! assert_eq!(graph.next_node(8, 9), Some(9));
+//! assert_eq!(graph.neighbor_to(0, 9), Some(4));
+//! assert_eq!(graph.neighbor_to(4, 9), Some(8));
+//! assert_eq!(graph.neighbor_to(8, 9), Some(9));
 //!
 //! // Both 1 and 4 can reach 11 in the shortest path.
-//! assert_eq!(graph.next_nodes(0, 11).collect::<Vec<_>>(), vec![1, 4]);
+//! assert_eq!(graph.neighbors_to(0, 11).collect::<Vec<_>>(), vec![1, 4]);
 //!
 //! // Get the path from 0 to 5
-//! assert_eq!(graph.path_to(0, 5).collect::<Vec<_>>(), vec![4, 5]);
+//! assert_eq!(graph.path_to(0, 5).collect::<Vec<_>>(), vec![0, 4, 5]);
 //! ```
 //!
 //! ## Do not exceed the maximum number of nodes for the graph type.
@@ -92,12 +92,28 @@ macro_rules! impl_prim {
             }
 
             impl [< Graph $num >] {
+                #[doc = "Create a new Graph" $num " with the given number of nodes."]
+                ///
+                #[doc = "Number of nodes must be equal or lower than " $num "."]
+                ///
+                /// <br>
+                ///
+                /// **panics** in debug mode if given number of nodes exceeds
+                #[doc = $num "."]
+                ///
+                /// In release mode, it will saturate at the maximum number of nodes.
                 pub fn builder(nodes_len: usize) -> [<Graph $num Builder>] {
                     debug_assert!(nodes_len <= $num, "Number of nodes must be equal or lower than {}", $num);
 
                     [<Graph $num Builder>]::new(nodes_len.min($num))
                 }
 
+                /// Converts this graph into a builder.
+                ///
+                /// This is useful if you want to update the graph,
+                /// like resizing nodes or adding/removing edges.
+                ///
+                /// Then you can build the graph again.
                 pub fn into_builder(self) -> [<Graph $num Builder>] {
                     [<Graph $num Builder>] {
                         nodes: self.nodes,
@@ -119,17 +135,17 @@ macro_rules! impl_prim {
                 /// the first one found will be returned. The same node will be returned for the same input.
                 /// However, the order of the nodes is not guaranteed.
                 ///
-                /// You can use [next_node_with](Self::next_node_with) to filter matching neighbors,
-                /// or [next_nodes](Self::next_nodes) to get all neighboring nodes.
+                /// You can use [neighbor_to_with](Self::neighbor_to_with) to filter matching neighbors,
+                /// or [neighbors_to](Self::neighbors_to) to get all neighboring nodes.
                 #[inline]
-                pub fn next_node(&self, curr: $node_id, dest: $node_id) -> Option<$node_id> {
-                    self.next_nodes(curr, dest).next()
+                pub fn neighbor_to(&self, curr: $node_id, dest: $node_id) -> Option<$node_id> {
+                    self.neighbors_to(curr, dest).next()
                 }
 
                 /// Given a current node and a destination node, and a filter function,
                 /// return the neighboring node of current that is the shortest path to the destination node.
                 ///
-                /// Same as `self.next_nodes(curr, dest).find(f)`
+                /// Same as `self.neighbors_to(curr, dest).find(f)`
                 ///
                 /// This may be useful if you want some custom behavior when choosing the next node.
                 ///
@@ -140,13 +156,13 @@ macro_rules! impl_prim {
                 /// - `curr` has no path to `dest`
                 /// - The filter function returns `false` for all neighboring nodes
                 #[inline]
-                pub fn next_node_with(
+                pub fn neighbor_to_with(
                     &self,
                     curr: $node_id,
                     dest: $node_id,
                     f: impl Fn($node_id) -> bool,
                 ) -> Option<$node_id> {
-                    self.next_nodes(curr, dest).find(|&n| f(n))
+                    self.neighbors_to(curr, dest).find(|&n| f(n))
                 }
 
                 /// Given a current node and a destination node,
@@ -154,7 +170,7 @@ macro_rules! impl_prim {
                 ///
                 /// The nodes will be returned in the same order for the same inputs. However, the ordering of the nodes is not guaranteed.
                 #[inline]
-                pub fn next_nodes(&self, curr: $node_id, dest: $node_id) -> [<NextNodesIter $num>]<'_> {
+                pub fn neighbors_to(&self, curr: $node_id, dest: $node_id) -> [<NextNodesIter $num>]<'_> {
                     [<NextNodesIter $num>] {
                         graph: self,
                         neighbors: self.nodes.neighbors(curr),
@@ -166,15 +182,25 @@ macro_rules! impl_prim {
                 /// Given a current node and a destination node,
                 /// return a path from the current node to the destination node.
                 ///
-                /// The path is a list of node IDs, starting with the next node (not current node!) and ending at the destination node.
+                /// The path is a list of node IDs, starting with current node and ending at the destination node.
+                ///
+                /// This is same as calling `.neighbor_to` repeatedly until the destination node is reached.
+                ///
+                /// If there is no path, the list will be empty.
                 #[inline]
                 pub fn path_to(&self, curr: $node_id, dest: $node_id) -> [<PathIter $num>]<'_> {
                     [<PathIter $num>] {
                         map: self,
                         curr,
                         dest,
-                        done: false,
+                        init: false,
                     }
+                }
+
+                /// Check if there is a path from the current node to the destination node.
+                #[inline]
+                pub fn path_exists(&self, curr: $node_id, dest: $node_id) -> bool {
+                    self.neighbor_to(curr, dest).is_some()
                 }
 
                 /// Return a list of all neighboring nodes of the given node.
@@ -197,26 +223,24 @@ macro_rules! impl_prim {
             }
 
             /// Iterator that returns a path from the current node to the destination node.
-            ///
-            /// Current node is not included in the path.
             #[derive(Debug)]
             pub struct [<PathIter $num>]<'a> {
                 map: &'a [<Graph $num>],
                 curr: $node_id,
                 dest: $node_id,
-                done: bool,
+                init: bool,
             }
 
             impl Iterator for [<PathIter $num>]<'_> {
                 type Item = $node_id;
 
                 fn next(&mut self) -> Option<Self::Item> {
-                    if self.done || self.curr == self.dest {
-                        return None;
+                    if !self.init {
+                        self.init = true;
+                        return Some(self.curr);
                     }
 
-                    let Some(next) = self.map.next_node(self.curr, self.dest) else {
-                        self.done = true;
+                    let Some(next) = self.map.neighbor_to(self.curr, self.dest) else {
                         return None;
                     };
 
@@ -256,7 +280,7 @@ macro_rules! impl_prim {
                 }
             }
 
-            #[doc = "Builder for the Graph" $num]
+            #[doc = "Builder for [Graph" $num "]"]
             #[derive(Debug, Clone)]
             pub struct [<Graph $num Builder>] {
                 pub nodes: [<Nodes $num>],
@@ -272,6 +296,16 @@ macro_rules! impl_prim {
             }
 
             impl [<Graph $num Builder>] {
+                #[doc = "Create a new [Graph" $num "] with the given number of nodes."]
+                ///
+                #[doc = "Number of nodes must be equal or lower than " $num "."]
+                ///
+                /// <br>
+                ///
+                /// **panics** in debug mode if given number of nodes exceeds
+                #[doc = $num "."]
+                ///
+                /// In release mode, it will saturate at the maximum number of nodes.
                 pub fn new(nodes_len: usize) -> Self {
                     Self {
                         nodes: [<Nodes $num>]::new(nodes_len),
@@ -306,6 +340,7 @@ macro_rules! impl_prim {
                     self.edge_masks.insert(ab, a_bit | b_bit);
                 }
 
+                /// Remove edge between node_a and node_b
                 pub fn disconnect(&mut self, a: $node_id, b: $node_id) {
                     // if the edge doesn't exist, return
                     if self.nodes.disconnect(a, b) {
@@ -319,12 +354,10 @@ macro_rules! impl_prim {
                     }
                 }
 
-                pub fn process(&mut self) {
-                    let mut this = std::mem::replace(self, Self::new(1));
-                    this = this.build().into_builder();
-                    let _ = std::mem::replace(self, this);
-                }
-
+                /// Build the graph.
+                ///
+                /// Consumes the builder, processes all shortest paths for all nodes,
+                #[doc = "and returns [Graph" $num "]."]
                 pub fn build(self) -> [< Graph $num >] {
                     let Self {
                         nodes,
@@ -553,9 +586,6 @@ macro_rules! impl_prim {
             }
 
             /// Map of nodes and their neighbors.
-            ///
-            /// index: node_id
-            ///
             #[doc = "value: " $node_bits " with neighbors' bit locations set to `true`"]
             #[derive(Debug, Clone)]
             pub struct [<Nodes $num>] {
@@ -620,6 +650,7 @@ macro_rules! impl_prim {
             #[derive(Debug, Clone)]
             pub struct [<Edges $num>] {
                 /// key: edge_id
+                ///
                 /// value: for each bit, if this edge is the shortest path
                 /// to that bit location's node, bit is set to 1
                 inner: HashMap<($node_id, $node_id), $node_bits>,

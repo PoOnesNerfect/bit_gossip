@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bit_gossip = { path = "../../bit_gossip" }
 petgraph = "0.6.3"
-maze = { path = "../maze" }

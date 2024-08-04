@@ -1,0 +1,9 @@
+[package]
+name = "bevy_maze"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy_app = "0.14"
+bit_gossip = { path = "../../bit_gossip"}
+

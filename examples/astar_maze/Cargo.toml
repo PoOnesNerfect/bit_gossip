@@ -7,5 +7,4 @@ edition = "2021"
 bevy = "0.14"
 bit_gossip = { path = "../../bit_gossip" }
 pathfinding = "4.10.0"
-maze = { path = "../maze" }
 

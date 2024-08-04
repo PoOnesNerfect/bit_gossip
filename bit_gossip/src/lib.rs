@@ -16,6 +16,7 @@ pub mod graph;
 pub use graph::{Graph, GraphBuilder};
 
 pub mod bitvec;
+pub mod maze;
 
 /// Given two node IDs, return a tuple of the two IDs in ascending order.
 #[inline]

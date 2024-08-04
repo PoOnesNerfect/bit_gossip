@@ -1,9 +1,0 @@
-[package]
-name = "bit_gossip_maze"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-maze = { path = "../maze" }
-bit_gossip = { path = "../../bit_gossip" }
-

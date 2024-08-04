@@ -1,4 +1,4 @@
-use maze::build_maze;
+use bit_gossip::maze::build_maze;
 use petgraph::{algo::floyd_warshall, graph::UnGraph};
 
 const GRID_WIDTH: u32 = 50;

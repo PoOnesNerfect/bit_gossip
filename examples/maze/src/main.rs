@@ -1,5 +1,4 @@
-use bit_gossip::Graph;
-use maze::build_maze;
+use bit_gossip::{maze::build_maze, Graph};
 
 const GRID_WIDTH: u16 = 50;
 const GRID_HEIGHT: u16 = 50;

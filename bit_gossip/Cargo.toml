@@ -17,4 +17,5 @@ parallel = ["dep:rayon"]
 
 [dependencies]
 paste = "1.0"
+rand = { version = "0.8.5" }
 rayon = { version = "1.10.0", optional = true }
