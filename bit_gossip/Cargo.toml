@@ -1,0 +1,20 @@
+[package]
+name = "bit_gossip"
+version = "0.0.3"
+rust-version = "1.56"
+description = "Pathfinding library for calculating all node pairs' shortest paths in an unweighted undirected graph."
+edition = "2021"
+authors = ["Jack Lee <jack.y.l.dev@gmail.com>"]
+documentation = "https://docs.rs/bit_gossip"
+repository = "https://github.com/poonesnerfect/bit_gossip"
+license = "MIT OR Apache-2.0"
+categories = ["algorithms", "data-structures", "mathematics", "game-development"]
+keywords = ["pathfinding", "graph", "search", "all-pairs", "shortest-path"]
+
+[features]
+default = ["parallel"]
+parallel = ["dep:rayon"]
+
+[dependencies]
+paste = "1.0"
+rayon = { version = "1.10.0", optional = true }

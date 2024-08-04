@@ -1,0 +1,10 @@
+[package]
+name = "maze"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy_app = "0.14"
+bit_gossip = { path = "../../bit_gossip"}
+rand = { version = "0.8.5", features = ["small_rng"] }
+

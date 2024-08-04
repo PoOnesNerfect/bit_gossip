@@ -1,4 +1,4 @@
-use super::sealed::U16orU32;
+use super::U16orU32;
 use crate::{bitvec::BitVec, edge_id};
 use std::{collections::HashMap, fmt::Debug};
 
@@ -16,11 +16,11 @@ impl<NodeId: U16orU32> SeqGraph<NodeId> {
     #[inline]
     pub fn builder(nodes_len: usize) -> SeqGraphBuilder<NodeId> {
         debug_assert!(
-            nodes_len <= NodeId::MAX_LEN,
+            nodes_len <= NodeId::MAX_NODES,
             "Number of nodes exceeds the limit; Specify `u32` as the NodeId type, like `SeqGraph::<u32>::builder(100_000)`"
         );
 
-        SeqGraphBuilder::new(nodes_len.min(NodeId::MAX_LEN))
+        SeqGraphBuilder::new(nodes_len.min(NodeId::MAX_NODES))
     }
 
     #[inline]
@@ -103,6 +103,12 @@ impl<NodeId: U16orU32> SeqGraph<NodeId> {
             dest,
             done: false,
         }
+    }
+
+    /// Check if there is a path from the current node to the destination node.
+    #[inline]
+    pub fn path_exists(&self, curr: NodeId, dest: NodeId) -> bool {
+        self.next_node(curr, dest).is_some()
     }
 
     /// Return a list of all neighboring nodes of the given node.
@@ -304,7 +310,7 @@ impl<NodeId: U16orU32> SeqGraphBuilder<NodeId> {
 
             // for each edge in this node
             // set the bit value for a and b as 1
-            for (i, b) in a_neighbors.iter().cloned().enumerate() {
+            for (i, b) in a_neighbors.iter().enumerate() {
                 let b = b.as_usize();
 
                 let mut val = true;
@@ -318,7 +324,7 @@ impl<NodeId: U16orU32> SeqGraphBuilder<NodeId> {
                 }
 
                 // for all other edges in this node, set the value for this node bit as 0
-                for (j, c) in a_neighbors.iter().cloned().enumerate() {
+                for (j, c) in a_neighbors.iter().enumerate() {
                     if i == j {
                         continue;
                     }
@@ -391,8 +397,8 @@ impl<NodeId: U16orU32> SeqGraphBuilder<NodeId> {
 
                 // get all neighbors' masks
                 // so we can just reuse it
-                for (i, b) in a_neighbors.iter().copied().enumerate() {
-                    let mask = edge_masks.get(edge_id(a, b)).unwrap();
+                for (i, b) in a_neighbors.iter().enumerate() {
+                    let mask = edge_masks.get(edge_id(a, *b)).unwrap();
                     neighbor_upserts[i].2 = mask.clone();
 
                     if !mask.eq(&full_mask) {
@@ -534,6 +540,12 @@ impl<NodeId: U16orU32> SeqGraphBuilder<NodeId> {
     #[inline]
     pub fn edges_len(&self) -> usize {
         self.edges.inner.len()
+    }
+
+    /// Return the neighbors of the given node.
+    #[inline]
+    pub fn neighbors(&self, node: NodeId) -> &[NodeId] {
+        self.nodes.neighbors(node)
     }
 }
 

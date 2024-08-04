@@ -103,8 +103,6 @@
 //! }
 //! ```
 
-use self::sealed::U16orU32;
-
 #[cfg(feature = "parallel")]
 pub mod parallel;
 pub mod sequential;
@@ -136,7 +134,7 @@ impl<NodeId: U16orU32> Graph<NodeId> {
     #[inline]
     pub fn builder(nodes_len: usize) -> GraphBuilder<NodeId> {
         assert!(
-            nodes_len <= NodeId::MAX_LEN,
+            nodes_len <= NodeId::MAX_NODES,
             "Number of nodes exceeds the limit; Specify `u32` as the NodeId type, like `Graph::<u32>::builder(100_000)`"
         );
 
@@ -237,6 +235,16 @@ impl<NodeId: U16orU32> Graph<NodeId> {
             Graph::Sequential(graph) => PathIter::Sequential(graph.path_to(curr, dest)),
             #[cfg(feature = "parallel")]
             Graph::Parallel(graph) => PathIter::Parallel(graph.path_to(curr, dest)),
+        }
+    }
+
+    /// Check if there is a path from the current node to the destination node.
+    #[inline]
+    pub fn path_exists(&self, curr: NodeId, dest: NodeId) -> bool {
+        match self {
+            Graph::Sequential(graph) => graph.path_exists(curr, dest),
+            #[cfg(feature = "parallel")]
+            Graph::Parallel(graph) => graph.path_exists(curr, dest),
         }
     }
 
@@ -463,25 +471,55 @@ impl<NodeId: U16orU32> GraphBuilder<NodeId> {
             } => 0,
         }
     }
+
+    /// Return the neighbors of the given node.
+    #[inline]
+    pub fn neighbors(&self, node: NodeId) -> &[NodeId] {
+        match self {
+            GraphBuilder {
+                inner: GraphBuilderEnum::Sequential(builder),
+                ..
+            } => builder.neighbors(node),
+            #[cfg(feature = "parallel")]
+            GraphBuilder {
+                inner: GraphBuilderEnum::Parallel(builder),
+                ..
+            } => builder.neighbors(node),
+            GraphBuilder {
+                inner: GraphBuilderEnum::None,
+                ..
+            } => &[],
+        }
+    }
+}
+
+/// Either u16 or u32.
+pub trait U16orU32: sealed::Sealed {
+    /// Maximum number of nodes that can be stored
+    const MAX_NODES: usize;
+
+    /// Cast type as usize.
+    /// For internal uses, we can assume this is safe.
+    fn as_usize(self) -> usize;
+
+    /// Convert usize to NodeId.
+    fn from_usize(value: usize) -> Self;
 }
 
 mod sealed {
-    use std::hash::Hash;
+    use std::fmt;
 
-    /// NodeId can be either u16 or u32.
-    pub trait U16orU32: Ord + Eq + Clone + Copy + Hash + Send + Sync {
-        const MAX_LEN: usize;
+    use super::*;
 
-        /// Cast type as usize.
-        /// For internal uses, we can assume this is safe.
-        fn as_usize(self) -> usize;
-
-        /// Convert usize to NodeId.
-        fn from_usize(value: usize) -> Self;
+    pub trait Sealed:
+        Ord + Eq + Clone + Copy + std::hash::Hash + Send + Sync + fmt::Display + fmt::Debug
+    {
     }
+    impl Sealed for u16 {}
+    impl Sealed for u32 {}
 
     impl U16orU32 for u16 {
-        const MAX_LEN: usize = 1 << 16;
+        const MAX_NODES: usize = 1 << 16;
 
         #[inline]
         fn as_usize(self) -> usize {
@@ -495,7 +533,7 @@ mod sealed {
     }
 
     impl U16orU32 for u32 {
-        const MAX_LEN: usize = 1 << 32;
+        const MAX_NODES: usize = 1 << 32;
 
         #[inline]
         fn as_usize(self) -> usize {
@@ -541,16 +579,16 @@ mod tests {
         let mut curr = 0;
         let dest = 9900;
 
-        let mut count = 0;
+        let mut hops = 0;
 
         while curr != dest {
             let prev = curr;
             curr = graph.next_node(curr, dest).unwrap();
             println!("{prev} -> {curr}");
 
-            count += 1;
+            hops += 1;
             if curr == dest {
-                println!("we've reached node '{dest}' in {count} hops!");
+                println!("we've reached node '{dest}' in {hops} hops!");
                 break;
             }
         }

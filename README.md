@@ -105,16 +105,16 @@ let graph = builder.build();
 let mut curr = 0;
 let dest = 9900;
 
-let mut count = 0;
+let mut hops = 0;
 
 while curr != dest {
     let prev = curr;
     curr = graph.next_node(curr, dest).unwrap();
     println!("{prev} -> {curr}");
 
-    count += 1;
+    hops += 1;
     if curr == dest {
-        println!("we've reached node '{dest}' in {count} hops!");
+        println!("we've reached node '{dest}' in {hops} hops!");
         break;
     }
 }

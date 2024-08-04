@@ -354,16 +354,14 @@ macro_rules! impl_prim {
                         let a_neighbors_len = a_neighbors.len() as usize;
 
                         // clear upserts
+                        upserts.fill((0, 0, 0));
                         if upserts.len() < a_neighbors_len {
                             upserts.resize(a_neighbors_len, (0, 0, 0));
-                        } else {
-                            upserts.fill((0, 0, 0));
                         }
 
                         // for each edge in this node
                         // set the value for a and b's node as 1
                         for (i, b) in a_neighbors.enumerate() {
-                            let a_bit = 1 << a;
                             let b_bit = 1 << b;
 
                             let mut val = b_bit;
@@ -373,7 +371,7 @@ macro_rules! impl_prim {
                             // - shortest path to a
                             // - gets further away from all other nodes
                             if a > b {
-                                val = a_bit;
+                                val = 0;
                             }
 
                             // for all other edges in this node, set the value for this node bit as 0
@@ -419,10 +417,9 @@ macro_rules! impl_prim {
                             let a_neighbors_len = a_neighbors.len() as usize;
 
                             // clear upserts
+                            upserts.fill((0, 0, 0));
                             if upserts.len() < a_neighbors_len {
                                 upserts.resize(a_neighbors_len, (0, 0, 0));
-                            } else {
-                                upserts.fill((0, 0, 0));
                             }
 
                             // collect all nodes that need to update their neighbors to next depth
@@ -449,8 +446,6 @@ macro_rules! impl_prim {
                             }
 
                             for (i, b) in a_neighbors.enumerate() {
-                                let ab = edge_id(a, b);
-
                                 // neighbors' bits to gossip from edge a->b to other edges
                                 let neighbors_mask = neighbors_at_depth.get(b as usize).unwrap().0 & !a_bit;
 
@@ -460,6 +455,8 @@ macro_rules! impl_prim {
                                 }
 
                                 a_active_neighbors_mask |= 1 << b;
+
+                                let ab = edge_id(a, b);
 
                                 let val = edges.get(ab).unwrap();
 

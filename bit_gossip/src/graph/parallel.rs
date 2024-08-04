@@ -1,4 +1,4 @@
-use super::sealed::U16orU32;
+use super::U16orU32;
 use crate::{
     bitvec::{AtomicBitVec, BitVec},
     edge_id,
@@ -20,11 +20,11 @@ impl<NodeId: U16orU32> ParaGraph<NodeId> {
     #[inline]
     pub fn builder(nodes_len: usize) -> ParaGraphBuilder<NodeId> {
         assert!(
-            nodes_len <= NodeId::MAX_LEN,
+            nodes_len <= NodeId::MAX_NODES,
             "Number of nodes exceeds the limit; Specify `u32` as the NodeId type, like `ParaGraph::<u32>::builder(100_000)`"
         );
 
-        ParaGraphBuilder::new(nodes_len.min(NodeId::MAX_LEN))
+        ParaGraphBuilder::new(nodes_len.min(NodeId::MAX_NODES))
     }
 
     /// Convert this ParaGraph into a ParaGraphBuilder.
@@ -110,8 +110,13 @@ impl<NodeId: U16orU32> ParaGraph<NodeId> {
             map: self,
             curr,
             dest,
-            done: false,
         }
+    }
+
+    /// Check if there is a path from the current node to the destination node.
+    #[inline]
+    pub fn path_exists(&self, curr: NodeId, dest: NodeId) -> bool {
+        self.next_node(curr, dest).is_some()
     }
 
     /// Return a list of all neighboring nodes of the given node.
@@ -141,19 +146,17 @@ pub struct PathIter<'a, NodeId: U16orU32> {
     map: &'a ParaGraph<NodeId>,
     curr: NodeId,
     dest: NodeId,
-    done: bool,
 }
 
 impl<NodeId: U16orU32> Iterator for PathIter<'_, NodeId> {
     type Item = NodeId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.done || self.curr == self.dest {
+        if self.curr == self.dest {
             return None;
         }
 
         let Some(next) = self.map.next_node(self.curr, self.dest) else {
-            self.done = true;
             return None;
         };
 
@@ -277,7 +280,7 @@ impl<NodeId: U16orU32> ParaGraphBuilder<NodeId> {
             ..
         } = self;
 
-        let chunk_size = 16;
+        let chunk_size = 8;
 
         // (neighbors at current depth, neighbors at previous depths)
         let neighbors_at_depth: Vec<(AtomicBitVec, AtomicBitVec)> = nodes
@@ -385,24 +388,22 @@ impl<NodeId: U16orU32> ParaGraphBuilder<NodeId> {
                         // collect all nodes that need to update their neighbors to next depth
                         let mut a_active_neighbors_mask = BitVec::ZERO;
 
-                        // are all edges computed for this node?
-                        let mut all_edges_done = true;
-
                         // get all neighbors' masks
                         // so we can just reuse it
-
-                        let mut neighbor_masks = Vec::with_capacity(a_neighbors.len());
+                        let mut a_neighbor_masks = Vec::with_capacity(a_neighbors.len());
 
                         for b in a_neighbors.iter().copied() {
                             let mask = edge_masks.get(edge_id(a, b)).unwrap();
-                            neighbor_masks.push(mask);
 
-                            if !mask.eq(&full_mask) {
-                                all_edges_done = false;
+                            if mask.eq(&full_mask) {
+                                a_neighbor_masks.push(None);
+                            } else {
+                                a_neighbor_masks.push(Some(mask));
                             }
                         }
 
-                        if all_edges_done {
+                        // if all edges are computed, skip
+                        if a_neighbor_masks.iter().all(Option::is_none) {
                             done_nodes.set_bit(a_usize, true);
 
                             continue;
@@ -411,13 +412,14 @@ impl<NodeId: U16orU32> ParaGraphBuilder<NodeId> {
                         for (i, b) in a_neighbors.iter().copied().enumerate() {
                             let b_usize = b.as_usize();
 
-                            // neighbors' bits to gossip from edge a->b to other edges
-                            let mut neighbors_mask = neighbors_at_depth[b_usize].0.into_bitvec();
+                            // b's neighbors' bits to gossip from edge a->b to other edges
+                            let mut b_neighbor_mask_at_d =
+                                neighbors_at_depth[b_usize].0.into_bitvec();
 
-                            neighbors_mask.set_bit(a_usize, false);
+                            b_neighbor_mask_at_d.set_bit(a_usize, false);
 
                             // if no neighbors to gossip at this depth, skip
-                            if neighbors_mask.is_zero() {
+                            if b_neighbor_mask_at_d.is_zero() {
                                 continue;
                             }
 
@@ -434,13 +436,11 @@ impl<NodeId: U16orU32> ParaGraphBuilder<NodeId> {
                                     continue;
                                 }
 
-                                let mask_ac = neighbor_masks[j];
-                                if mask_ac.eq(&full_mask) {
+                                let Some(mask_ac) = a_neighbor_masks[j] else {
                                     continue;
-                                }
-                                all_edges_done = false;
+                                };
 
-                                let mut compute_mask = neighbors_mask.clone();
+                                let mut compute_mask = b_neighbor_mask_at_d.clone();
                                 // dont set bits that are already computed
                                 compute_mask.bitand_not_assign(&mask_ac.into_bitvec());
 
@@ -465,7 +465,7 @@ impl<NodeId: U16orU32> ParaGraphBuilder<NodeId> {
 
                         // if all edges are computed or none of a's neighbors are active,
                         // then a is done
-                        if all_edges_done || a_active_neighbors_mask.is_zero() {
+                        if a_active_neighbors_mask.is_zero() {
                             done_nodes.set_bit(a_usize, true);
                         } else {
                             for (b, upserts) in
@@ -539,6 +539,12 @@ impl<NodeId: U16orU32> ParaGraphBuilder<NodeId> {
     #[inline]
     pub fn edges_len(&self) -> usize {
         self.edges.inner.len()
+    }
+
+    /// Return the neighbors of the given node.
+    #[inline]
+    pub fn neighbors(&self, node: NodeId) -> &[NodeId] {
+        self.nodes.neighbors(node)
     }
 }
 

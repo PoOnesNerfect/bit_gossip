@@ -182,7 +182,7 @@ impl AtomicBitVec {
 impl fmt::Debug for AtomicBitVec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "AtomicBitVec(")?;
-        for i in 0..self.0.len() {
+        for i in (0..self.0.len()).rev() {
             write!(f, "{:0>BITS$b}", self.0[i].load(Relaxed))?;
         }
         write!(f, ")")

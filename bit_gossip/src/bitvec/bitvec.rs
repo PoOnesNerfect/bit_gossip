@@ -2,7 +2,7 @@ use super::{
     digit::{Digit, BITS},
     AtomicBitVec,
 };
-use std::fmt;
+use std::{fmt, iter::repeat};
 
 /// An array of digits to work with underlying bits.
 ///
@@ -29,9 +29,7 @@ impl BitVec {
         let (i, j) = (bit_index / BITS, bit_index % BITS);
         let mut res = Self(Vec::with_capacity(i + 1));
 
-        for _ in 0..i {
-            res.0.push(0);
-        }
+        res.0.resize(i, 0);
         res.0.push(1 << j);
 
         res
@@ -44,10 +42,7 @@ impl BitVec {
 
         let mut res = Self(Vec::with_capacity(i + (j > 0) as usize));
 
-        for _ in 0..i {
-            res.0.push(Digit::MAX);
-        }
-
+        res.0.resize(i, Digit::MAX);
         if j > 0 {
             res.0.push(Digit::MAX >> (BITS - j));
         }
@@ -73,11 +68,7 @@ impl BitVec {
             self.0[i] &= !(1 << j);
         }
 
-        // if setting value to 0, and if it is in the last element,
-        // normalize to remove leading zeros
-        if !value && i == self.0.len() - 1 {
-            self.normalize();
-        }
+        self.normalize();
     }
 
     /// Get the bit at the given index.
@@ -154,35 +145,9 @@ impl BitVec {
         self.0.iter().zip(other.0.iter()).all(|(a, b)| a == b)
     }
 
-    /// a = a & b
-    pub fn bitand_assign(&mut self, rhs: &Self) {
-        if self.is_zero() {
-            return;
-        }
-
-        if rhs.is_zero() {
-            self.0.clear();
-            return;
-        }
-
-        if self.0.len() > rhs.0.len() {
-            self.0.truncate(rhs.0.len());
-        }
-
-        for (a, b) in self.0.iter_mut().zip(rhs.0.iter()) {
-            *a &= b;
-        }
-
-        self.normalize();
-    }
-
     /// a = a & !b
     pub fn bitand_not_assign(&mut self, rhs: &Self) {
-        if self.is_zero() {
-            return;
-        }
-
-        if rhs.is_zero() {
+        if self.is_zero() || rhs.is_zero() {
             return;
         }
 
@@ -261,78 +226,36 @@ impl BitVec {
             return;
         }
 
-        if !self.is_zero() {
-            for (a, (b, c)) in self.0.iter_mut().zip(rhs1.0.iter().zip(rhs2.0.iter())) {
-                *a |= !b & c;
-            }
+        let mut bc = rhs1.0.iter().chain(repeat(&0)).zip(rhs2.0.iter());
+
+        for a in self.0.iter_mut() {
+            let Some((b, c)) = bc.next() else {
+                break;
+            };
+
+            *a |= !b & c;
         }
 
-        let rhs_len = rhs1.0.len().min(rhs2.0.len());
-        if self.0.len() < rhs_len {
-            self.0.reserve_exact(rhs_len - self.0.len());
-            for (b, c) in rhs1.0.iter().zip(rhs2.0.iter()).skip(self.0.len()) {
+        if rhs2.0.len() > self.0.len() {
+            self.0.reserve_exact(rhs2.0.len() - self.0.len());
+
+            for (b, c) in bc {
                 self.0.push(!b & c);
             }
-
-            self.normalize();
-        }
-    }
-
-    /// a = a ^ b
-    pub fn bitxor_assign(&mut self, rhs: &Self) {
-        if self.is_zero() {
-            return;
-        }
-
-        if rhs.is_zero() {
-            return;
-        }
-
-        for (a, b) in self.0.iter_mut().zip(rhs.0.iter()) {
-            *a ^= b;
-        }
-        if self.0.len() < rhs.0.len() {
-            self.0.extend_from_slice(&rhs.0[self.0.len()..]);
         }
 
         self.normalize();
-    }
-
-    /// a = !a
-    ///
-    /// Even when the array is exhausted, it will set bits to 1 until the given bit length.
-    pub fn not_assign(&mut self, bit_len: usize) {
-        let last = bit_len / BITS;
-        let shift = bit_len % BITS;
-
-        for i in 0..last.min(self.0.len()) {
-            self.0[i] = !self.0[i];
-        }
-
-        if last >= self.0.len() {
-            self.0.resize(last + 1, Digit::MAX);
-        }
-
-        let shifted = 1 << shift;
-        self.0[last] = !self.0[last] & ((shifted - 1) | shifted);
-
-        self.normalize();
-    }
-
-    /// !a
-    ///
-    /// Even when the array is exhausted, it will set bits to 1 until the given bit length.
-    pub fn not(&self, bit_len: usize) -> Self {
-        let mut res = self.clone();
-        res.not_assign(bit_len);
-        res
     }
 }
 
 impl fmt::Debug for BitVec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "BitVec(")?;
-        for i in 0..self.0.len() {
+        if self.0.is_empty() {
+            return write!(f, "{})", 0);
+        }
+
+        for i in (0..self.0.len()).rev() {
             write!(f, "{:0>BITS$b}", self.0[i])?;
         }
         write!(f, ")")
