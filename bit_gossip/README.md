@@ -255,7 +255,7 @@ Do you see a pattern here? Every edge has 2 bits set.
 
 #### Second Iteration
 
-Now, its edge will share its bits with its neighboring edges; this is why the algorithm is called `bit_gossip`.
+Now, each edge will start share its bits with neighboring edges; this is why the algorithm is called `bit_gossip`.
 
 **Note**: we share the bit only if the neighboring edge does not have the bit already set.
 
@@ -266,7 +266,8 @@ Let's start with edges of node `0`.
 [ ][ ][1][ ][ ][0]  // 0 -> 3
 ```
 
-`0->1` is the shortest path to `1`, which means that all other edges from `0` are not the shortest paths to `1`.
+`0->1` is the shortest path to `1`, which means that all other edges from `0` cannot be the shortest paths to `1`.
+If they were, their bit 1 would be already set.
 
 So, we set all other neighboring edges' bit 1 to 0.
 
