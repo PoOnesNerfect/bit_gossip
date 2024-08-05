@@ -614,7 +614,7 @@ This is just to show how `bit_gossip` can be used in a game.
 For me, at around 1000 enemies, I start to notice a lag in the `astar` version whenever the player moves.
 `bit_gossip` version, however, does not show any lag regardless of the number of enemies.
 
-I went up to more than 20000 enemies, and it shows no degradation in performance.
+I went up to more than 50000 enemies, and it shows no degradation in performance.
 
 Still, it is amazing how well `astar` performs even with 1000 enemies chasing the player.
 This means that for most games, `astar` is more than enough.
