@@ -6,7 +6,7 @@
 //! You're still free to use these functions in your own projects.
 
 use crate::graph::U16orU32;
-use rand::{rngs::StdRng, seq::SliceRandom, RngCore, SeedableRng};
+use rand::{rngs::StdRng, seq::SliceRandom, Rng, RngCore, SeedableRng};
 
 /// Builds a maze of the given width and height.
 ///
@@ -44,8 +44,11 @@ pub fn build_maze_with_rng<N: U16orU32, R: RngCore>(w: N, h: N, rng: &mut R) -> 
     let mut visited = vec![false; w_usize * h_usize];
     let mut stack = vec![];
 
-    let mut curr = 0usize;
+    let mut curr = rng.gen_range(0..(w_usize * h_usize));
     visited[curr] = true;
+
+    let mut depth = 0;
+    let max_depth = (w_usize + h_usize) / 2;
 
     loop {
         let mut neighbors = vec![];
@@ -63,14 +66,16 @@ pub fn build_maze_with_rng<N: U16orU32, R: RngCore>(w: N, h: N, rng: &mut R) -> 
             neighbors.push(curr - w_usize);
         }
 
-        if !neighbors.is_empty() {
+        if !neighbors.is_empty() && depth < max_depth {
             let next = *neighbors.choose(rng).unwrap();
             stack.push(curr);
             maze.push((N::from_usize(curr), N::from_usize(next)));
             curr = next;
             visited[curr as usize] = true;
+            depth += 1;
         } else if let Some(prev) = stack.pop() {
             curr = prev;
+            depth = 0;
         } else {
             break;
         }
