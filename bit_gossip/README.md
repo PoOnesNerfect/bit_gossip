@@ -26,6 +26,11 @@ See [benchmarks](#benchmarks) for more details.
 
 ## Table of Contents
 
+<details>
+<summary>Click to expand</summary>
+
+<br>
+
 <!--toc:start-->
 
 - [bit_gossip](#bitgossip)
@@ -59,6 +64,8 @@ See [benchmarks](#benchmarks) for more details.
   - [Background](#background)
 
 <!--toc:end-->
+
+</details>
 
 ## Basic Usage
 
