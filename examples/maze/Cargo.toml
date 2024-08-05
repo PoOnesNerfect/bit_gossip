@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.14"
-bevy_maze = { path = "../bevy_maze" }
 bit_gossip = { path = "../../bit_gossip" }
 iyes_perf_ui = "0.3.0"
+pathfinding = "4.10.0"
 rand = "0.8.5"
 

@@ -1,5 +1,4 @@
-use super::maze::{GRID_HEIGHT, GRID_WIDTH};
-use crate::graphics::BOARD_SIZE;
+use crate::{graphics::BOARD_SIZE, GridDimensions};
 use bevy::prelude::*;
 
 pub struct MovementPlugin;
@@ -48,6 +47,7 @@ pub struct TargetNode(pub u16);
 
 fn movement(
     time: Res<Time>,
+    grid: Res<GridDimensions>,
     mut query: Query<(
         &mut Transform,
         &MovementSpeed,
@@ -60,11 +60,11 @@ fn movement(
             continue;
         }
 
-        let target_cell = node_to_cell(target.0);
-        let curr_cell = node_to_cell(curr.0);
+        let target_cell = node_to_cell(target.0, &grid);
+        let curr_cell = node_to_cell(curr.0, &grid);
 
-        let curr_pos = node_to_pos(curr.0);
-        let target_pos = node_to_pos(target.0);
+        let curr_pos = node_to_pos(curr.0, &grid);
+        let target_pos = node_to_pos(target.0, &grid);
 
         if target_cell.y == curr_cell.y {
             let tl = &mut tf.translation;
@@ -122,10 +122,10 @@ fn movement(
     }
 }
 
-pub fn node_to_pos(node: u16) -> Vec2 {
-    let cell_size = BOARD_SIZE / Vec2::new(GRID_WIDTH as f32, GRID_HEIGHT as f32);
+pub fn node_to_pos(node: u16, grid: &GridDimensions) -> Vec2 {
+    let cell_size = BOARD_SIZE / Vec2::new(grid.width as f32, grid.height as f32);
 
-    let (x, y) = node_to_cell(node).into();
+    let (x, y) = node_to_cell(node, grid).into();
 
     let pos_x = x as f32 * cell_size.x + cell_size.x / 2. - BOARD_SIZE.x / 2.;
     let pos_y = BOARD_SIZE.y / 2. - y as f32 * cell_size.y - cell_size.y / 2.;
@@ -133,9 +133,9 @@ pub fn node_to_pos(node: u16) -> Vec2 {
     Vec2::new(pos_x, pos_y)
 }
 
-pub fn node_to_cell(node: u16) -> UVec2 {
-    let x = node % GRID_WIDTH;
-    let y = node / GRID_WIDTH;
+pub fn node_to_cell(node: u16, grid: &GridDimensions) -> UVec2 {
+    let x = node % grid.width;
+    let y = node / grid.width;
 
     (x as u32, y as u32).into()
 }

@@ -1,7 +1,6 @@
-use super::{
-    maze::{Neighbors, GRID_SIZE, GRID_WIDTH},
-    movement::node_to_pos,
-};
+use crate::{GridDimensions, Neighbors};
+
+use super::movement::node_to_pos;
 use bevy::prelude::*;
 
 pub struct PlayerPlugin;
@@ -18,19 +17,20 @@ pub struct Player(pub u16);
 
 fn handle_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    grid: Res<GridDimensions>,
     neighbors: Res<Neighbors>,
     mut query: Query<&mut Player>,
 ) {
     for mut player in query.iter_mut() {
         let mut target = None;
         if keyboard_input.just_pressed(KeyCode::ArrowUp) {
-            target = get_neighbor(player.0, KeyCode::ArrowUp);
+            target = get_neighbor(player.0, KeyCode::ArrowUp, &grid);
         } else if keyboard_input.just_pressed(KeyCode::ArrowDown) {
-            target = get_neighbor(player.0, KeyCode::ArrowDown);
+            target = get_neighbor(player.0, KeyCode::ArrowDown, &grid);
         } else if keyboard_input.just_pressed(KeyCode::ArrowLeft) {
-            target = get_neighbor(player.0, KeyCode::ArrowLeft);
+            target = get_neighbor(player.0, KeyCode::ArrowLeft, &grid);
         } else if keyboard_input.just_pressed(KeyCode::ArrowRight) {
-            target = get_neighbor(player.0, KeyCode::ArrowRight);
+            target = get_neighbor(player.0, KeyCode::ArrowRight, &grid);
         }
 
         if let Some(target) = target {
@@ -41,38 +41,38 @@ fn handle_input(
     }
 }
 
-fn spawn_player(mut commands: Commands) {
+fn spawn_player(mut commands: Commands, grid: Res<GridDimensions>) {
     commands.spawn((
         Player(0),
-        Transform::from_translation(node_to_pos(0).extend(3.)),
+        Transform::from_translation(node_to_pos(0, &grid).extend(3.)),
     ));
 }
 
-fn get_neighbor(node: u16, dir: KeyCode) -> Option<u16> {
+fn get_neighbor(node: u16, dir: KeyCode, grid: &GridDimensions) -> Option<u16> {
     match dir {
         KeyCode::ArrowUp => {
-            if node < GRID_WIDTH {
+            if node < grid.width {
                 None
             } else {
-                Some(node - GRID_WIDTH)
+                Some(node - grid.width)
             }
         }
         KeyCode::ArrowDown => {
-            if node + GRID_WIDTH > GRID_SIZE {
+            if node + grid.width > grid.size() {
                 None
             } else {
-                Some(node + GRID_WIDTH)
+                Some(node + grid.width)
             }
         }
         KeyCode::ArrowLeft => {
-            if node % GRID_WIDTH == 0 {
+            if node % grid.width == 0 {
                 None
             } else {
                 Some(node - 1)
             }
         }
         KeyCode::ArrowRight => {
-            if node % GRID_WIDTH == GRID_WIDTH - 1 {
+            if node % grid.width == grid.width - 1 {
                 None
             } else {
                 Some(node + 1)

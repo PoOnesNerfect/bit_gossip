@@ -1,5 +1,6 @@
-use crate::game::maze::{Maze, GRID_HEIGHT, GRID_WIDTH};
 use bevy::{color::palettes::tailwind::GRAY_200, prelude::*, sprite::MaterialMesh2dBundle};
+
+use crate::{GridDimensions, Maze};
 
 mod enemy;
 mod player;
@@ -24,10 +25,11 @@ fn insert_character_mesh(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>
 }
 
 // spawn one big board
-// with black lines (GRID_WIDTH - 1) vertically and (GRID_HEIGHT - 1) horizontally.
+// with black lines (grid.width - 1) vertically and (grid.height - 1) horizontally.
 // For all the edges in the maze, spawn a white to overwrite the black line for the edge.
 fn draw_maze(
     mut commands: Commands,
+    grid: Res<GridDimensions>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     maze: Res<Maze>,
@@ -47,8 +49,8 @@ fn draw_maze(
     let black = materials.add(Color::BLACK);
 
     let x_wall_mesh = meshes.add(Rectangle::new(2., BOARD_SIZE.y));
-    for i in 0..GRID_WIDTH {
-        let x = BOARD_SIZE.x / GRID_WIDTH as f32 * i as f32;
+    for i in 0..grid.width {
+        let x = BOARD_SIZE.x / grid.width as f32 * i as f32;
         let wall = MaterialMesh2dBundle {
             mesh: x_wall_mesh.clone().into(),
             material: black.clone(),
@@ -60,8 +62,8 @@ fn draw_maze(
 
     let y_wall_mesh = meshes.add(Rectangle::new(BOARD_SIZE.x, 2.));
 
-    for i in 0..GRID_HEIGHT {
-        let y = BOARD_SIZE.y / GRID_HEIGHT as f32 * i as f32;
+    for i in 0..grid.height {
+        let y = BOARD_SIZE.y / grid.height as f32 * i as f32;
         let wall = MaterialMesh2dBundle {
             mesh: y_wall_mesh.clone().into(),
             material: black.clone(),
@@ -71,14 +73,14 @@ fn draw_maze(
         commands.spawn(wall);
     }
 
-    let x_edge_mesh = meshes.add(Rectangle::new(2., BOARD_SIZE.y / GRID_HEIGHT as f32 - 1.));
-    let y_edge_mesh = meshes.add(Rectangle::new(BOARD_SIZE.x / GRID_WIDTH as f32 - 1., 2.));
+    let x_edge_mesh = meshes.add(Rectangle::new(2., BOARD_SIZE.y / grid.height as f32 - 1.));
+    let y_edge_mesh = meshes.add(Rectangle::new(BOARD_SIZE.x / grid.width as f32 - 1., 2.));
 
-    let cell_size = BOARD_SIZE / Vec2::new(GRID_WIDTH as f32, GRID_HEIGHT as f32);
+    let cell_size = BOARD_SIZE / Vec2::new(grid.width as f32, grid.height as f32);
 
     for (a, b) in maze.0.iter() {
-        let (a_x, a_y) = (a % GRID_WIDTH, a / GRID_WIDTH);
-        let (b_x, b_y) = (b % GRID_WIDTH, b / GRID_WIDTH);
+        let (a_x, a_y) = (a % grid.width, a / grid.width);
+        let (b_x, b_y) = (b % grid.width, b / grid.width);
 
         if a_y == b_y {
             // Horizontal edge

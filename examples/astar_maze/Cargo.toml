@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.14"
-bit_gossip = { path = "../../bit_gossip" }
+maze = { path = "../maze" }
 pathfinding = "4.10.0"
 
