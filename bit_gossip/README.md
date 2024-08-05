@@ -145,6 +145,304 @@ For varying map sizes over 128 nodes, use `SeqGraph` or `ParaGraph`. In multi-th
 
 The library exposes a generic `Graph` type that automatically selects the parallel or sequential version based on the environment, with manual selection also available.
 
+## How It Works
+
+### Graph Representation
+
+<details>
+  <summary>Click to expand</summary>
+
+Each edge in the graph stores N bits of information, where N is the number of nodes in the graph.
+
+In the edge `a->b`, `n`'th bit represents the presence of a shortest path from the node `a` to the node `b` in this edge.
+
+Therefore, the graph can store all shortest paths between all pairs of nodes in the graph in NxM bits, where M is the number of edges in the graph.
+
+Once the graph is built, you can retrieve the shortest path between any two nodes in near constant time, just by checking the bits in the edges.
+
+</details>
+
+### Building the Graph
+
+<details>
+  <summary>Click to expand</summary>
+
+We will follow through a simple graph:
+
+```
+0 -- 1 -- 2
+|    |
+3 -- 4
+|
+5
+```
+
+At the start, all the bits in the edges are unset. Every edge will have bits `[ ][ ][ ][ ][ ][ ]` like so.
+
+```
+[ ][ ][ ][ ][ ][ ]  // 0 -> 1
+[ ][ ][ ][ ][ ][ ]  // 0 -> 3
+[ ][ ][ ][ ][ ][ ]  // 1 -> 2
+[ ][ ][ ][ ][ ][ ]  // 1 -> 4
+[ ][ ][ ][ ][ ][ ]  // 3 -> 4
+[ ][ ][ ][ ][ ][ ]  // 3 -> 5
+```
+
+#### First Iteration
+
+Let's start with node `0`.
+
+For the edge `0->1`, we set the bits to `[ ][ ][ ][ ][1][ ]` since this edge is part of the shortest path to `1`.
+
+```
+[ ][ ][ ][ ][1][ ]  // 0 -> 1
+```
+
+For `0->3`, we set the bits to `[ ][ ][1][ ][ ][ ]` since this edge is part of the shortest path to `3`.
+
+```
+[ ][ ][1][ ][ ][ ]  // 0 -> 3
+```
+
+Next, we move to node `1`.
+
+For the edge `1->0`, we can simply flip the bits of `0->1`.
+
+```
+[ ][ ][ ][ ][1][ ]  // 0 -> 1
+flips to
+[ ][ ][ ][ ][0][ ]  // 1 -> 0
+```
+
+From node `1`'s perspective, the edge `1->0` is the shortest path to `0`, and gets further away from `1`. Makes sense, right?
+
+Anyways, we set the bit 0.
+
+```
+[ ][ ][ ][ ][1][0]  // 0 -> 1
+flips to
+[ ][ ][ ][ ][0][1]  // 1 -> 0
+```
+
+Now, to `1->2`, we set the bit 2 to `1`, as this edge is the shortest path to node `2`.
+
+```
+[ ][ ][ ][1][ ][ ]  // 1 -> 2
+```
+
+Now, we move to node `2`.
+
+For `2->1`, we set the 3rd (bit for node 2) bit to `1` and flip it:
+
+```
+[ ][ ][ ][1][0][ ]  // 1 -> 2
+```
+
+We repeat this process for rest of the nodes, which we end up with the following bits in edges, in matrix form:
+
+```
+[ ][ ][ ][ ][1][0]  // 0 -> 1
+[ ][ ][1][ ][ ][0]  // 0 -> 3
+[ ][ ][ ][1][0][ ]  // 1 -> 2
+[ ][1][ ][ ][0][ ]  // 1 -> 4
+[ ][1][0][ ][ ][ ]  // 3 -> 4
+[1][ ][0][ ][ ][ ]  // 3 -> 5
+```
+
+Do you see a pattern here? Every edge has 2 bits set.
+
+#### Second Iteration
+
+Now, its edge will share its bits with its neighboring edges; this is why the algorithm is called `bit_gossip`.
+
+**Note**: we share the bit only if the neighboring edge does not have the bit set.
+
+Let's start with edges of node `0`.
+
+```
+[ ][ ][ ][ ][1][0]  // 0 -> 1
+[ ][ ][1][ ][ ][0]  // 0 -> 3
+```
+
+`0->1` is the shortest path to `1`, which means that all other edges from `0` are not the shortest paths to `1`.
+
+So, we set all other neighboring edges' bit 1 to 0.
+
+```
+[ ][ ][ ][ ][1][0]  // 0 -> 1
+[ ][ ][1][ ][0][0]  // 0 -> 3
+```
+
+Same with `0->3`. Since we know that `0->3` is the shortest path to `3`, all other neighboring edges cannot be the shortest paths to `3`.
+So, we set all other neighboring edges' bit 3 to 0.
+
+```
+[ ][ ][0][ ][1][0]  // 0 -> 1
+[ ][ ][1][ ][0][0]  // 0 -> 3
+```
+
+Now, let's go to edges of node `1`. I flipped the edge `0->1` to `1->0` for easier visualization.
+
+```
+[ ][ ][1][ ][0][1]  // 1 -> 0
+[ ][ ][ ][1][0][ ]  // 1 -> 2
+[ ][1][ ][ ][0][ ]  // 1 -> 4
+```
+
+Since `1->0` is the shortest path to `0`, we set all neighboring edges bit 0 to `0`.
+
+```
+[ ][ ][1][ ][0][1]  // 1 -> 0
+[ ][ ][ ][1][0][0]  // 1 -> 2
+[ ][1][ ][ ][0][0]  // 1 -> 4
+```
+
+Since `1->2` is the shortest path to `2`, we set all neighboring edges bit 2 to `0`.
+For `0->1` we flip this bit, so it becomes `1`.
+
+```
+[ ][ ][1][0][0][1]  // 1 -> 0
+[ ][ ][ ][1][0][0]  // 1 -> 2
+[ ][1][ ][0][0][0]  // 1 -> 4
+```
+
+And same for `1->4`.
+
+```
+[ ][0][1][0][0][1]  // 1 -> 0
+[ ][0][ ][1][0][0]  // 1 -> 2
+[ ][1][ ][0][0][0]  // 1 -> 4
+```
+
+We repeat this process for rest of the nodes:
+
+node 3:
+
+```
+[0][0][0][ ][1][1]  // 3 -> 0
+[0][1][0][ ][ ][0]  // 3 -> 4
+[1][0][0][ ][ ][0]  // 3 -> 5
+```
+
+node 4:
+
+```
+[ ][0][0][1][1][1]  // 4 -> 1
+[1][0][1][ ][0][1]  // 4 -> 3
+```
+
+After the gossip session, the edge matrix looks like this:
+
+```
+[ ][1][0][1][1][0]  // 0 -> 1
+[1][1][1][ ][0][0]  // 0 -> 3
+[ ][0][ ][1][0][0]  // 1 -> 2
+[ ][1][1][0][0][0]  // 1 -> 4
+[0][1][0][ ][1][0]  // 3 -> 4
+[1][0][0][ ][ ][0]  // 3 -> 5
+```
+
+See how gossiping about its shortest paths spreads through the graph.
+
+We repeat this process until either:
+
+1. all bits in all edges are set, or
+2. no bits were set in the iteration.
+
+That's it!
+
+Since all operations are bitwise, the computation is extremely fast.
+
+Also, "gossiping" at each node is independent from other nodes, so we can parallelize the computation, which we do in the `Graph` type.
+
+</details>
+
+### Path Retrieval
+
+<details>
+  <summary>Click to expand</summary>
+
+After all iterations are done, the matrix will look like this:
+
+```
+0 -- 1 -- 2
+|    |
+3 -- 4
+|
+5
+```
+
+```
+[0][1][0][1][1][0]  // 0 -> 1
+[1][1][1][0][0][0]  // 0 -> 3
+[0][0][0][1][0][0]  // 1 -> 2
+[1][1][1][0][0][0]  // 1 -> 4
+[0][1][0][0][1][0]  // 3 -> 4
+[1][0][0][0][0][0]  // 3 -> 5
+```
+
+Now, how do we use this data to retrieve the shortest path between two nodes?
+
+Let's say we want to find the shortest path between node `2` and node `5`.
+
+1. Check the edges of `2` at bit `5`.
+
+Flip `1->2` to view bits of `2->1`.
+
+```
+[1][1][1][0][1][1]  // 2 -> 1
+```
+
+We see that the bit 5 is set, so we move to node `1`.
+
+2. Check the edges of `1` at bit `5`.
+
+```
+[1][0][1][0][0][1]  // 1 -> 0
+[0][0][0][1][0][0]  // 1 -> 2
+[1][1][1][0][0][0]  // 1 -> 4
+```
+
+We see that both `1->0` and `1->4` have bit 5 set; at this point, we can either move to `0` or `4`.
+Both will give the equal shortest path.
+
+Let's move to `4`.
+
+```
+[0][0][0][1][1][1]  // 4 -> 1
+[1][0][1][1][0][1]  // 4 -> 3
+```
+
+We see that the bit 5 is set, so we move to node `3`.
+
+3. Check the edges of `3` at bit `5`.
+
+```
+[0][0][0][1][1][1]  // 3 -> 0
+[0][1][0][0][1][0]  // 3 -> 4
+[1][0][0][0][0][0]  // 3 -> 5
+```
+
+We see that the bit 5 is set, so we move to node `5`.
+
+4. We have reached node `5`.
+
+The shortest path between node `2` and node `5` is `2 -> 1 -> 4 -> 3 -> 5`.
+
+Hooraay!
+
+You may think that this is a lot of work to find a path, but in reality, this is extremely fast.
+
+In an actual game, we don't need to retrieve the entire path to the destination.
+
+All we need is, "for the edges of the current node, which one is the shortest path to the destination node?"
+
+After we go to the next node, we repeat the process.
+
+If the destination is changed, again, we simply ask the question, "which neighbor should I go to next?"
+
+</details>
+
 ## Benchmarks
 
 The benchmarks below illustrate computation times for different graph sizes and types. They serve to highlight the performance characteristics of various graph representations rather than providing absolute metrics.
@@ -256,8 +554,8 @@ Still, it is amazing how well `astar` performs even with 1000 enemies chasing th
 This means that for most games, `astar` is more than enough.
 
 you can change the size by
-going into [examples/maze/src/main.rs](examples/maze/src/main.rs) for `bit_gossip` version,
-and [examples/astar_maze/src/main.rs](examples/astar_maze/src/main.rs) for `astar` version.
+going into [examples/maze/src/main.rs](https://github.com/PoOnesNerfect/bit_gossip/blob/main/examples/maze/src/main.rs) for `bit_gossip` version,
+and [examples/astar_maze/src/main.rs](https://github.com/PoOnesNerfect/bit_gossip/blob/main/examples/astar_maze/src/main.rs) for `astar` version.
 
 Change the values in `MazePlugin::new(50, 50)` to change the maze grid width and height.
 
