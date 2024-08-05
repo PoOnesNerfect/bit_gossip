@@ -261,6 +261,14 @@ and [examples/astar_maze/src/main.rs](examples/astar_maze/src/main.rs) for `asta
 
 Change the values in `MazePlugin::new(50, 50)` to change the maze grid width and height.
 
+### Astar Recording
+
+https://github.com/user-attachments/assets/b1ddf4da-c885-4b86-b114-a2cce7ff7e98
+
+### Bit Gossip Recording
+
+https://github.com/user-attachments/assets/be9378f4-e3c8-452b-b94c-900b7a94b45a
+
 ## Background
 
 I am an avid day-dreamer. I am constantly thinking about solutions to problems, instead of
