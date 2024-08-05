@@ -24,6 +24,42 @@ Also, computation is fast enough to be used not only in static maps but also in 
 
 See [benchmarks](#benchmarks) for more details.
 
+## Table of Contents
+
+<!--toc:start-->
+
+- [bit_gossip](#bitgossip)
+  - [Table of Contents](#table-of-contents)
+  - [Basic Usage](#basic-usage)
+    - [Small Graphs](#small-graphs)
+    - [Large Graphs](#large-graphs)
+  - [Graph Types](#graph-types)
+  - [How It Works](#how-it-works)
+    - [Graph Representation](#graph-representation)
+    - [Building the Graph](#building-the-graph)
+      - [First Iteration](#first-iteration)
+      - [Second Iteration](#second-iteration)
+    - [Path Retrieval](#path-retrieval)
+  - [Benchmarks](#benchmarks)
+    - [Processing Time](#processing-time)
+    - [Memory Usage](#memory-usage)
+  - [Features](#features)
+  - [Examples](#examples)
+    - [Astar Recording](#astar-recording)
+    - [Bit Gossip Recording](#bit-gossip-recording)
+  - [Optimization for Large Graphs](#optimization-for-large-graphs)
+    - [Partitioning](#partitioning)
+    - [Dividing the Map Better](#dividing-the-map-better)
+  - [Future Plans](#future-plans)
+    - [Node with A Single Neighbor](#node-with-a-single-neighbor)
+    - [Delta/Flow of Information](#deltaflow-of-information)
+    - [GPU/SIMD Acceleration](#gpusimd-acceleration)
+    - [Finding Dangling Nodes](#finding-dangling-nodes)
+    - [Moving Away from a Destination](#moving-away-from-a-destination)
+  - [Background](#background)
+
+<!--toc:end-->
+
 ## Basic Usage
 
 ### Small Graphs
@@ -434,7 +470,7 @@ Let's move to `4`.
 [1][0][1][1][0][1]  // 4 -> 3
 ```
 
-We see that the bit 5 is set, so we move to node `3`.
+We see that the bit 5 is set for `4->3`, so we move to node `3`.
 
 3. Check the edges of `3` at bit `5`.
 
@@ -444,11 +480,11 @@ We see that the bit 5 is set, so we move to node `3`.
 [1][0][0][0][0][0]  // 3 -> 5
 ```
 
-We see that the bit 5 is set, so we move to node `5`.
+We see that the bit 5 is set for `3->5`, so we move to node `5`.
 
 4. We have reached node `5`.
 
-The shortest path between node `2` and node `5` is `2 -> 1 -> 4 -> 3 -> 5`.
+Thus, the shortest path between node `2` and node `5` is `2 -> 1 -> 4 -> 3 -> 5`.
 
 Hooraay!
 
@@ -467,6 +503,8 @@ If the destination is changed, again, we simply ask the question, "which neighbo
 ## Benchmarks
 
 The benchmarks below illustrate computation times for different graph sizes and types. They serve to highlight the performance characteristics of various graph representations rather than providing absolute metrics.
+
+Note that different types of graphs will take different amount of time; For example, maze graphs took a bit more than just tile grids.
 
 **Machine Specs:** Apple M3 Pro, 12-core CPU, 18GB RAM
 
@@ -587,6 +625,86 @@ https://github.com/user-attachments/assets/b1ddf4da-c885-4b86-b114-a2cce7ff7e98
 ### Bit Gossip Recording
 
 https://github.com/user-attachments/assets/be9378f4-e3c8-452b-b94c-900b7a94b45a
+
+## Optimization for Large Graphs
+
+### Partitioning
+
+Partitioning the graph into smaller graphs can help with memory usage and computation time.
+
+With astar, I believe this is called hierarchical pathfinding?
+
+If you have over 10000 nodes, you should definitely consider partitioning the graph.
+
+### Dividing the Map Better
+
+Instead of making tiles into graphs, think about dividing your map into rooms and doors.
+
+A room is a space where any point is reachable from any other point trivially, like by drawing a straight line.
+
+A door is an edge that connects two rooms.
+
+This way, you can just find a path from room to room, at which point you can just move straight
+to the more specific point in the room.
+
+Personally, I think this is a better approach than partitioning the graph.
+
+## Future Plans
+
+When I was developing the algorithm, I found some interesting points about the algorithm
+that I could explore further to find more ways to optimize the algorithm.
+
+### Node with A Single Neighbor
+
+When a node only has a sinlge neighbore, that neighbor is the shortest path to all other nodes.
+
+Furthermore, if that neighbor only has two neighbors, that node's only other neighbor is the shortest path to all other nodes.
+
+This can be a good optimization point for maze-like graphs.
+
+### Delta/Flow of Information
+
+I'm not sure what to call this yet, but this is related to partial updates of the graph.
+
+Say, after the graph is built, we want to remove an edge.
+
+How can we update the graph without rebuilding the entire graph? Which nodes should be updated?
+
+One idea that I have not explored far enough is thinking of the graph as a flow of information.
+
+The information lost due to removing that edge is the nodes that were reachable only through that edge.
+
+```
+lost bits = (merged bits of all other edges) ^ (bits of the edge to be removed)
+```
+
+Does this make sense?
+
+So for the node's neighbors and their neighbors, we only unset the bits that were uniquely set by the edge that was removed.
+
+And, for any node affected, if their neighbor also has the shortest path for any of the lost bits, we don't propagate it.
+
+It seems not too hard... but I need to think about it more, and also about how much compute it will actually save?
+
+### GPU/SIMD Acceleration
+
+I'm not an expert on GPU or SIMD, but maybe it could be possible?
+
+### Finding Dangling Nodes
+
+It should also be trivial to find the nodes that are unreachable from all other nodes.
+
+In a node, any node, merge all edges' bits together, and, if some bit are still 0, that node is unreachable.
+
+### Moving Away from a Destination
+
+It is also very easy to find a path to move away from a destination.
+
+It's just the opposite of finding a path to the destination.
+
+Find an edge with the bit set as 0, and move to that node.
+It's uncertain whether it is the furthest path from the destination, but
+at least you won't get closer faster than the shortest path.
 
 ## Background
 
