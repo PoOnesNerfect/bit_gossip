@@ -13,7 +13,7 @@ This library is for you if your game:
 - has decent number of nodes/tiles (~1000), and
 - has hundreds or thousands of entities that need to find paths to a moving target.
 
-If you have a static map of large number of nodes (>80,000),
+If you have a static map of large number of nodes (>10,000),
 you can use this library to compute all paths during the loading phase.
 
 Also, computation is fast enough to be used not only in static maps but also in dynamically changing maps in games.
@@ -141,8 +141,6 @@ while curr != dest {
 
 For fixed node sizes less than 128 nodes, prefer primitive-data-type-backed graph types.
 
-For varying map sizes over 128 nodes, use `SeqGraph` or `ParaGraph`. In multi-threaded environments, `ParaGraph` is recommended.
-
 The library exposes a generic `Graph` type that automatically selects the parallel or sequential version based on the environment, with manual selection also available.
 
 ## How It Works
@@ -154,7 +152,7 @@ The library exposes a generic `Graph` type that automatically selects the parall
 
 Each edge in the graph stores N bits of information, where N is the number of nodes in the graph.
 
-In the edge `a->b`, `n`'th bit represents the presence of a shortest path from the node `a` to the node `b` in this edge.
+In the edge `a->b`, `n`'th bit represents the presence of a shortest path from the node `a` to the node `n` in this edge.
 
 Therefore, the graph can store all shortest paths between all pairs of nodes in the graph in NxM bits, where M is the number of edges in the graph.
 
