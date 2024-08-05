@@ -82,7 +82,7 @@ If the environment allows multi-threading, `Graph` will process paths in paralle
 
 In this example, let's create a 100x100 grid graph.
 
-```no_run
+```rust
 use bit_gossip::Graph;
 
 // Initialize a builder with 10000 nodes
