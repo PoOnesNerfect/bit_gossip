@@ -210,19 +210,23 @@ For the edge `1->0`, we can simply flip the bits of `0->1`.
 
 ```
 [ ][ ][ ][ ][1][ ]  // 0 -> 1
+
 flips to
+
 [ ][ ][ ][ ][0][ ]  // 1 -> 0
 ```
 
-From node `1`'s perspective, the edge `1->0` is the shortest path to `0`, and gets further away from `1`. Makes sense, right?
-
-Anyways, we set the bit 0.
+We set the bit 0 to 1.
 
 ```
-[ ][ ][ ][ ][1][0]  // 0 -> 1
-flips to
 [ ][ ][ ][ ][0][1]  // 1 -> 0
+
+flips to
+
+[ ][ ][ ][ ][1][0]  // 0 -> 1
 ```
+
+From node `1`'s perspective, the edge `1->0` is the shortest path to `0`, and gets further away from `1`. Makes sense, right?
 
 Now, to `1->2`, we set the bit 2 to `1`, as this edge is the shortest path to node `2`.
 
@@ -232,10 +236,10 @@ Now, to `1->2`, we set the bit 2 to `1`, as this edge is the shortest path to no
 
 Now, we move to node `2`.
 
-For `2->1`, we set the 3rd (bit for node 2) bit to `1` and flip it:
+For `2->1`, again, flipping `1->2`, we set the bit 1 to `1`.
 
 ```
-[ ][ ][ ][1][0][ ]  // 1 -> 2
+[ ][ ][ ][0][1][ ]  // 2 -> 1
 ```
 
 We repeat this process for rest of the nodes, which we end up with the following bits in edges, in matrix form:
@@ -255,7 +259,7 @@ Do you see a pattern here? Every edge has 2 bits set.
 
 Now, its edge will share its bits with its neighboring edges; this is why the algorithm is called `bit_gossip`.
 
-**Note**: we share the bit only if the neighboring edge does not have the bit set.
+**Note**: we share the bit only if the neighboring edge does not have the bit already set.
 
 Let's start with edges of node `0`.
 
@@ -283,6 +287,8 @@ So, we set all other neighboring edges' bit 3 to 0.
 
 Now, let's go to edges of node `1`. I flipped the edge `0->1` to `1->0` for easier visualization.
 
+**node 1:**
+
 ```
 [ ][ ][1][ ][0][1]  // 1 -> 0
 [ ][ ][ ][1][0][ ]  // 1 -> 2
@@ -298,7 +304,6 @@ Since `1->0` is the shortest path to `0`, we set all neighboring edges bit 0 to 
 ```
 
 Since `1->2` is the shortest path to `2`, we set all neighboring edges bit 2 to `0`.
-For `0->1` we flip this bit, so it becomes `1`.
 
 ```
 [ ][ ][1][0][0][1]  // 1 -> 0
@@ -316,7 +321,15 @@ And same for `1->4`.
 
 We repeat this process for rest of the nodes:
 
-node 3:
+**node 3:**
+
+```
+[ ][ ][0][ ][1][1]  // 3 -> 0
+[ ][1][0][ ][ ][ ]  // 3 -> 4
+[1][ ][0][ ][ ][ ]  // 3 -> 5
+```
+
+becomes
 
 ```
 [0][0][0][ ][1][1]  // 3 -> 0
@@ -324,7 +337,14 @@ node 3:
 [1][0][0][ ][ ][0]  // 3 -> 5
 ```
 
-node 4:
+**node 4:**
+
+```
+[ ][0][ ][1][1][1]  // 4 -> 1
+[1][0][1][ ][ ][1]  // 4 -> 3
+```
+
+becomes
 
 ```
 [ ][0][0][1][1][1]  // 4 -> 1
@@ -342,7 +362,9 @@ After the gossip session, the edge matrix looks like this:
 [1][0][0][ ][ ][0]  // 3 -> 5
 ```
 
-See how gossiping about its shortest paths spreads through the graph.
+See how shortest-paths information spreads like wildfire? just like gossiping!
+
+Hence, the name `bit_gossip`.
 
 We repeat this process until either:
 
