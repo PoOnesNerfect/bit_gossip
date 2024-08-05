@@ -20,6 +20,6 @@ fn main() {
                 })
                 .set(ImagePlugin::default_nearest()),
         )
-        .add_plugins((MazePlugin::new(50, 50), plugin::AstarPlugin))
+        .add_plugins((MazePlugin::new(80, 80), plugin::AstarPlugin))
         .run();
 }

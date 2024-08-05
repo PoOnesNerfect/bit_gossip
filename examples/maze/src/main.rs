@@ -18,6 +18,6 @@ fn main() {
                 })
                 .set(ImagePlugin::default_nearest()),
         )
-        .add_plugins((MazePlugin::new(50, 50), BitGossipPlugin))
+        .add_plugins((MazePlugin::new(80, 80), BitGossipPlugin))
         .run();
 }

@@ -218,6 +218,49 @@ Below chart shows memory usage in bytes `B`.
 
 - **parallel**: Enable parallelism using Rayon; this feature is enabled by default.
 
+## Examples
+
+I have made a simple maze game using [bevy](https://bevyengine.org/) to compare `bit_gossip` and `astar`.
+
+The game will create a 80x80 grid maze.
+
+You can move the "player" (green dot) using the arrow keys.
+
+Whenever you press the `<space>` key spawns 200 more enemies (red dots) that chase the player.
+
+When the player and enemies collide, the enemies are removed.
+
+**note**: for `bit_gossip`, building a graph initially with 80x80 grid maze takes a few seconds,
+and the enemies will not move until built. When built, it will log `graph built in ...s` to the console.
+
+You can run the `bit_gossip` version with:
+
+```sh
+cargo run --release -p maze
+```
+
+You can run the `astar` version with:
+
+```sh
+cargo run --release -p astar_maze
+```
+
+This is just to show how `bit_gossip` can be used in a game.
+
+For me, at around 1000 enemies, I start to notice a lag in the `astar` version whenever the player moves.
+`bit_gossip` version, however, does not show any lag regardless of the number of enemies.
+
+I went up to more than 20000 enemies, and it shows no degradation in performance.
+
+Still, it is amazing how well `astar` performs even with 1000 enemies chasing the player.
+This means that for most games, `astar` is more than enough.
+
+you can change the size by
+going into [examples/maze/src/main.rs](examples/maze/src/main.rs) for `bit_gossip` version,
+and [examples/astar_maze/src/main.rs](examples/astar_maze/src/main.rs) for `astar` version.
+
+Change the values in `MazePlugin::new(50, 50)` to change the maze grid width and height.
+
 ## Background
 
 I am an avid day-dreamer. I am constantly thinking about solutions to problems, instead of
