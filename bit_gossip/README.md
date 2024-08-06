@@ -713,77 +713,55 @@ Find an edge with the bit set as 0, and move to that node.
 It's uncertain whether it is the furthest path from the destination, but
 at least you won't get closer faster than the shortest path.
 
-## Background
+## What Paper Did I Base This On?
 
-I am an avid day-dreamer. I am constantly thinking about solutions to problems, instead of
-googling and finding out that the problem has already been solved 30 years ago.
+**Short Answer:** None.
 
-My journey with _bit_gossip_ began with a quest for optimizing pathfinding in games like _Vampire Survivors_,
-where numerous enemies chase a constantly moving player.
-Traditional algorithms like A* and Dijkstra are effective for static destinations
-but become costly with dynamic targets.
+Of course, I tried looking into precomputed pathfinding in gamedev communities, but the only similar concept that I could find
+was written back in 2003; Richard "superpig" Fine published an [article](https://archive.gamedev.net/archive/reference/articles/article1939.html)
+that uses matrices to store the shortest paths between all pairs of nodes, although he does not give detail on how to actually compute the matrix.
 
-There are optimizations you can try, of course, such as:
+Even after starting the project, I had no idea that there was a huge field of mathematics called
+All-Pairs Shortest Paths (APSP) that is dedicated to solving this problem.
 
-1. grouping entities together and computing the shortest path for the group,
-2. caching the shortest paths for a certain amount of time,
-3. using a hierarchical pathfinding algorithm.
+Only after I finished the initial implementation did it occur to me that
+maybe this is a well-known problem with established solutions,
+and I just didn't look hard enough.
 
-**1** seems hard to implement well,
-**2** can be expensive in terms of memory and not worth it if the player is constantly moving around to different places, and
-**3** actually sounds like a good idea, but at this point, I was already thinking about a different solution.
+So, then, I started looking into graph theory and found out about APSP, as well as papers on this topic.
+I learned about Floyd-Warshall and Johnson's algorithm, and I found some papers on APSP.
 
-So, like any good game developer, instead of actually working on my game,
-I started thinking about way of optimizing it.
+There are some similar thoughts with Floyd-Warshall and Johnson's, but the implementation is quite different
+as far as I know.
 
-I started thinking about precomputing paths.
-This is an attractive approach since I can compute paths at game loading time, or even compile time,
-and, after the game starts, shortest paths to player from any position can be fetched in constant time.
+I tried reading papers on this topic, but either:
 
-However, some concerns came to mind immediately:
+1. they were behind paywalls, or
+2. I just could not understand them; how can the pseudo code be less readable than my actual code?
+3. and none of them have actual code implementation nor real-life benchmarks.
 
-1. It may take a very long time to compute all shortest paths between all pairs of nodes.
-2. Storing all shortest paths may take up a lot of memory.
+So, at some point, I lost complete interest and gave up on reading papers;
+I decided I'm just too dumb for academic life.
 
-This eventually led me to explore bitwise storage of path information,
-where each edge holds **n** bits indicating the presence of shortest paths through it.
+So, **long answer:** Also no.
 
-**Note**
+This implementation is original as far as I know, though there may be some similar concepts;
+I also scraped the github repos to find any similar concepts or implementations, and found none.
 
-At time of implementing _bit_gossip_, I was not aware this idea had already been under research for decades.
+It is entirely possible that someone already wrote a paper on this implementation, and I just couldn't find it;
+if so, please email me at jackyldev@gmail.com
 
-The idea of asking 'which node should I go to next?' in gamedev is also not original at all.
-Even back in 2003, Richard "superpig" Fine published an [article](https://archive.gamedev.net/archive/reference/articles/article1939.html)
-that uses matrices to store the shortest paths between all pairs of nodes, although it does not give detail on how to actually compute the matrix.
+If you could also explain what the paper is in simple terms, I would be grateful, because I do want to understand
+what they are saying.
 
-I also later found out that there is an entire field of mathematics that is dedicated to solving this problem,
-called _All-Pairs Shortest Paths (APSP)_ with sub-field for unweighted undirected graphs.
-
-There are established algorithms that solve this problem such as Floyd-Warshall and Johnson's algorithm.
-
-There are also many many academic papers on this topic that claim to have solved this problem in the smallest computational complexity.
-
-I would like to know if my algorithm is already known in some form in the academic world; however, it has been pretty hard for me to find out.
-
-Many of these papers are behind paywalls, and even when they are accessible, I find them very hard to understand, as I am not an academic.
-When psuedo codes are less readable than actual code, I just lose all my interest in trying.
-
-So, if you are an academic in this field, and you see that my implementation already exists in some form in some paper,
-please let me know. If you could also explain it to me in simple terms, I will be very grateful.
-
-Here are some papers that I found that are related to this topic, that I wish I could read:
+With that being said, here are some papers that I wish I had access to or had the ability to understand:
 
 - [On the All-Pairs-Shortest-Path Problem in Unweighted Undirected Graphs](https://www.sciencedirect.com/science/article/pii/S0022000085710781?via%3Dihub)
+- [Original optimal method to solve the all-pairs shortest path problem: Dhouib-matrix-ALL-SPP - ScienceDirect](https://www.sciencedirect.com/science/article/pii/S2666764924000109)
 - [Scalable All-pairs Shortest Paths for Huge Graphs on Multi-GPU Clusters](https://dl.acm.org/doi/abs/10.1145/3431379.3460651)
 - [All-pairs shortest paths for unweighted undirected graphs in o(mn) time | Proceedings of the seventeenth annual ACM-SIAM symposium on Discrete algorithm](https://dl.acm.org/doi/10.5555/1109557.1109614)
 
-In terms of non-academic projects go, I do think that this project is unique in its approach.
-At least I could not find any project that focuses on this specific problem that does not use Floyd-Warshall or Johnson's algorithm.
-If you also find a project that is similar to _bit_gossip_, please let me know.
-
-It's hard to find benchmarks for APSP algorithms, let alone any projects that implement them in actual code, not just in pseudo code.
-From the very few benchmarks that I was able to find, _bit_gossip_ does seem to outperform them by a long shot.
-If you also find benchmarks for other APSP implementations, please do let me know.
+If anyone wants to explain what any of these papers are talking about, please email me at jackyldev@gmail.com
 
 [Graph]: https://docs.rs/bit_gossip/latest/bit_gossip/graph/enum.Graph.html
 [SeqGraph]: https://docs.rs/bit_gossip/latest/bit_gossip/graph/sequential/struct.SeqGraph.html
