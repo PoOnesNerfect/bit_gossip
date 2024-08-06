@@ -1,6 +1,6 @@
 [package]
 name = "bit_gossip"
-version = "0.0.10"
+version = "0.0.11"
 rust-version = "1.56"
 description = "Pathfinding library for calculating all node pairs' shortest paths in an unweighted undirected graph."
 edition = "2021"
