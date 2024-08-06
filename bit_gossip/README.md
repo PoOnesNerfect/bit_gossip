@@ -61,7 +61,7 @@ See [benchmarks](#benchmarks) for more details.
     - [GPU/SIMD Acceleration](#gpusimd-acceleration)
     - [Finding Dangling Nodes](#finding-dangling-nodes)
     - [Moving Away from a Destination](#moving-away-from-a-destination)
-  - [Background](#background)
+  - [What Paper Did I Base This On?](#what-paper-did-i-base-this-on)
 
 <!--toc:end-->
 
@@ -743,7 +743,7 @@ I tried reading papers on this topic, but either:
 So, at some point, I lost complete interest and gave up on reading papers;
 I decided I'm just too dumb for academic life.
 
-So, **long answer:** Also no.
+So, **long answer:** Also, none.
 
 This implementation is original as far as I know, though there may be some similar concepts;
 I also scraped the github repos to find any similar concepts or implementations, and found none.
