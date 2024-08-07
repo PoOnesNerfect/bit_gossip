@@ -395,6 +395,22 @@ impl<NodeId: U16orU32> GraphBuilder<NodeId> {
         self
     }
 
+    /// Resize the graph to the given number of nodes.
+    ///
+    /// All edges that are connected to nodes that are removed will also be removed.
+    pub fn resize(&mut self, nodes_len: usize) {
+        if self.inner.is_none() {
+            self.inner.set_builder(self.nodes_len, self.multi_threaded);
+        }
+
+        match &mut self.inner {
+            GraphBuilderEnum::Sequential(builder) => builder.resize(nodes_len),
+            #[cfg(feature = "parallel")]
+            GraphBuilderEnum::Parallel(builder) => builder.resize(nodes_len),
+            GraphBuilderEnum::None => unreachable!(),
+        }
+    }
+
     /// Add an edge between node_a and node_b
     #[inline]
     pub fn connect(&mut self, a: NodeId, b: NodeId) {

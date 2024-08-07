@@ -143,6 +143,15 @@ impl AtomicBitVec {
             }
         }
     }
+
+    /// Truncate the size of the bitvec to the given length of bits.
+    pub fn truncate(&mut self, bit_len: usize) {
+        let (i, j) = (bit_len / BITS, bit_len % BITS);
+        self.0.truncate(i + (j > 0) as usize);
+        if j > 0 {
+            self.0[i].fetch_and(Digit::MAX >> (BITS - j), Relaxed);
+        }
+    }
 }
 
 impl AtomicBitVec {

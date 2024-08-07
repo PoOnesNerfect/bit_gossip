@@ -38,6 +38,7 @@ See [benchmarks](#benchmarks) for more details.
   - [Basic Usage](#basic-usage)
     - [Small Graphs](#small-graphs)
     - [Large Graphs](#large-graphs)
+    - [Updating the Graph](#updating-the-graph)
   - [Graph Types](#graph-types)
   - [How It Works](#how-it-works)
     - [Graph Representation](#graph-representation)
@@ -169,6 +170,42 @@ while curr != dest {
 }
 ```
 
+### Updating the Graph
+
+You cannot update the graph directly, but you can convert the graph back into the builder,
+update the number of nodes and add/remove edges, then build the graph again.
+
+I have not tested the resizing of graph yet, so please open an issue if you find any bugs.
+
+```rust
+use bit_gossip::Graph;
+
+// Initialize a builder with 10000 nodes
+let mut builder = Graph::builder(10000);
+
+... build graph
+
+// Build the graph
+// This may take a few seconds
+let graph = builder.build();
+
+... do some work
+
+let mut builder  = graph.into_builder();
+
+// Resize the graph to 5000 nodes
+builder.resize(5000);
+
+// add/remove edges
+builder.disconnect(0, 1);
+builder.connect(0, 3000);
+
+... 
+
+/// Build the graph again
+let graph = builder.build();
+```
+
 ## Graph Types
 
 - [Graph16], [Graph32], [Graph64], [Graph128]: Uses primitive data types for bit storage and are highly efficient.
@@ -221,12 +258,12 @@ We will follow through a simple graph:
 At the start, all the bits in the edges are unset. Every edge will have bits `[ ][ ][ ][ ][ ][ ]` like so.
 
 ```
-[ ][ ][ ][ ][ ][ ]  // 0 -> 1
-[ ][ ][ ][ ][ ][ ]  // 0 -> 3
-[ ][ ][ ][ ][ ][ ]  // 1 -> 2
-[ ][ ][ ][ ][ ][ ]  // 1 -> 4
-[ ][ ][ ][ ][ ][ ]  // 3 -> 4
-[ ][ ][ ][ ][ ][ ]  // 3 -> 5
+[ ][ ][ ][ ][ ][ ] // 0 -> 1
+[ ][ ][ ][ ][ ][ ] // 0 -> 3
+[ ][ ][ ][ ][ ][ ] // 1 -> 2
+[ ][ ][ ][ ][ ][ ] // 1 -> 4
+[ ][ ][ ][ ][ ][ ] // 3 -> 4
+[ ][ ][ ][ ][ ][ ] // 3 -> 5
 ```
 
 #### First Iteration
@@ -236,13 +273,13 @@ Let's start with node `0`.
 For the edge `0->1`, we set the bits to `[ ][ ][ ][ ][1][ ]` since this edge is part of the shortest path to `1`.
 
 ```
-[ ][ ][ ][ ][1][ ]  // 0 -> 1
+[ ][ ][ ][ ][1][ ] // 0 -> 1
 ```
 
 For `0->3`, we set the bits to `[ ][ ][1][ ][ ][ ]` since this edge is part of the shortest path to `3`.
 
 ```
-[ ][ ][1][ ][ ][ ]  // 0 -> 3
+[ ][ ][1][ ][ ][ ] // 0 -> 3
 ```
 
 Next, we move to node `1`.
@@ -250,21 +287,21 @@ Next, we move to node `1`.
 For the edge `1->0`, we can simply flip the bits of `0->1`.
 
 ```
-[ ][ ][ ][ ][1][ ]  // 0 -> 1
+[ ][ ][ ][ ][1][ ] // 0 -> 1
 
 flips to
 
-[ ][ ][ ][ ][0][ ]  // 1 -> 0
+[ ][ ][ ][ ][0][ ] // 1 -> 0
 ```
 
 We set the bit 0 to 1.
 
 ```
-[ ][ ][ ][ ][0][1]  // 1 -> 0
+[ ][ ][ ][ ][0][1] // 1 -> 0
 
 flips to
 
-[ ][ ][ ][ ][1][0]  // 0 -> 1
+[ ][ ][ ][ ][1][0] // 0 -> 1
 ```
 
 From node `1`'s perspective, the edge `1->0` is the shortest path to `0`, and gets further away from `1`. Makes sense, right?
@@ -272,7 +309,7 @@ From node `1`'s perspective, the edge `1->0` is the shortest path to `0`, and ge
 Now, to `1->2`, we set the bit 2 to `1`, as this edge is the shortest path to node `2`.
 
 ```
-[ ][ ][ ][1][ ][ ]  // 1 -> 2
+[ ][ ][ ][1][ ][ ] // 1 -> 2
 ```
 
 Now, we move to node `2`.
@@ -280,18 +317,18 @@ Now, we move to node `2`.
 For `2->1`, again, flipping `1->2`, we set the bit 1 to `1`.
 
 ```
-[ ][ ][ ][0][1][ ]  // 2 -> 1
+[ ][ ][ ][0][1][ ] // 2 -> 1
 ```
 
 We repeat this process for rest of the nodes, which we end up with the following bits in edges, in matrix form:
 
 ```
-[ ][ ][ ][ ][1][0]  // 0 -> 1
-[ ][ ][1][ ][ ][0]  // 0 -> 3
-[ ][ ][ ][1][0][ ]  // 1 -> 2
-[ ][1][ ][ ][0][ ]  // 1 -> 4
-[ ][1][0][ ][ ][ ]  // 3 -> 4
-[1][ ][0][ ][ ][ ]  // 3 -> 5
+[ ][ ][ ][ ][1][0] // 0 -> 1
+[ ][ ][1][ ][ ][0] // 0 -> 3
+[ ][ ][ ][1][0][ ] // 1 -> 2
+[ ][1][ ][ ][0][ ] // 1 -> 4
+[ ][1][0][ ][ ][ ] // 3 -> 4
+[1][ ][0][ ][ ][ ] // 3 -> 5
 ```
 
 Do you see a pattern here? Every edge has 2 bits set.
@@ -305,8 +342,8 @@ Now, each edge will start share its bits with neighboring edges; this is why the
 Let's start with edges of node `0`.
 
 ```
-[ ][ ][ ][ ][1][0]  // 0 -> 1
-[ ][ ][1][ ][ ][0]  // 0 -> 3
+[ ][ ][ ][ ][1][0] // 0 -> 1
+[ ][ ][1][ ][ ][0] // 0 -> 3
 ```
 
 `0->1` is the shortest path to `1`, which means that all other edges from `0` cannot be the shortest paths to `1`.
@@ -315,16 +352,16 @@ If they were, their bit 1 would be already set.
 So, we set all other neighboring edges' bit 1 to 0.
 
 ```
-[ ][ ][ ][ ][1][0]  // 0 -> 1
-[ ][ ][1][ ][0][0]  // 0 -> 3
+[ ][ ][ ][ ][1][0] // 0 -> 1
+[ ][ ][1][ ][0][0] // 0 -> 3
 ```
 
 Same with `0->3`. Since we know that `0->3` is the shortest path to `3`, all other neighboring edges cannot be the shortest paths to `3`.
 So, we set all other neighboring edges' bit 3 to 0.
 
 ```
-[ ][ ][0][ ][1][0]  // 0 -> 1
-[ ][ ][1][ ][0][0]  // 0 -> 3
+[ ][ ][0][ ][1][0] // 0 -> 1
+[ ][ ][1][ ][0][0] // 0 -> 3
 ```
 
 Now, let's go to edges of node `1`. I flipped the edge `0->1` to `1->0` for easier visualization.
@@ -332,33 +369,33 @@ Now, let's go to edges of node `1`. I flipped the edge `0->1` to `1->0` for easi
 **node 1:**
 
 ```
-[ ][ ][1][ ][0][1]  // 1 -> 0
-[ ][ ][ ][1][0][ ]  // 1 -> 2
-[ ][1][ ][ ][0][ ]  // 1 -> 4
+[ ][ ][1][ ][0][1] // 1 -> 0
+[ ][ ][ ][1][0][ ] // 1 -> 2
+[ ][1][ ][ ][0][ ] // 1 -> 4
 ```
 
 Since `1->0` is the shortest path to `0`, we set all neighboring edges bit 0 to `0`.
 
 ```
-[ ][ ][1][ ][0][1]  // 1 -> 0
-[ ][ ][ ][1][0][0]  // 1 -> 2
-[ ][1][ ][ ][0][0]  // 1 -> 4
+[ ][ ][1][ ][0][1] // 1 -> 0
+[ ][ ][ ][1][0][0] // 1 -> 2
+[ ][1][ ][ ][0][0] // 1 -> 4
 ```
 
 Since `1->2` is the shortest path to `2`, we set all neighboring edges bit 2 to `0`.
 
 ```
-[ ][ ][1][0][0][1]  // 1 -> 0
-[ ][ ][ ][1][0][0]  // 1 -> 2
-[ ][1][ ][0][0][0]  // 1 -> 4
+[ ][ ][1][0][0][1] // 1 -> 0
+[ ][ ][ ][1][0][0] // 1 -> 2
+[ ][1][ ][0][0][0] // 1 -> 4
 ```
 
 And same for `1->4`.
 
 ```
-[ ][0][1][0][0][1]  // 1 -> 0
-[ ][0][ ][1][0][0]  // 1 -> 2
-[ ][1][ ][0][0][0]  // 1 -> 4
+[ ][0][1][0][0][1] // 1 -> 0
+[ ][0][ ][1][0][0] // 1 -> 2
+[ ][1][ ][0][0][0] // 1 -> 4
 ```
 
 We repeat this process for rest of the nodes:
@@ -366,42 +403,42 @@ We repeat this process for rest of the nodes:
 **node 3:**
 
 ```
-[ ][ ][0][ ][1][1]  // 3 -> 0
-[ ][1][0][ ][ ][ ]  // 3 -> 4
-[1][ ][0][ ][ ][ ]  // 3 -> 5
+[ ][ ][0][ ][1][1] // 3 -> 0
+[ ][1][0][ ][ ][ ] // 3 -> 4
+[1][ ][0][ ][ ][ ] // 3 -> 5
 ```
 
 becomes
 
 ```
-[0][0][0][ ][1][1]  // 3 -> 0
-[0][1][0][ ][ ][0]  // 3 -> 4
-[1][0][0][ ][ ][0]  // 3 -> 5
+[0][0][0][ ][1][1] // 3 -> 0
+[0][1][0][ ][ ][0] // 3 -> 4
+[1][0][0][ ][ ][0] // 3 -> 5
 ```
 
 **node 4:**
 
 ```
-[ ][0][ ][1][1][1]  // 4 -> 1
-[1][0][1][ ][ ][1]  // 4 -> 3
+[ ][0][ ][1][1][1] // 4 -> 1
+[1][0][1][ ][ ][1] // 4 -> 3
 ```
 
 becomes
 
 ```
-[ ][0][0][1][1][1]  // 4 -> 1
-[1][0][1][ ][0][1]  // 4 -> 3
+[ ][0][0][1][1][1] // 4 -> 1
+[1][0][1][ ][0][1] // 4 -> 3
 ```
 
 After the gossip session, the edge matrix looks like this:
 
 ```
-[ ][1][0][1][1][0]  // 0 -> 1
-[1][1][1][ ][0][0]  // 0 -> 3
-[ ][0][ ][1][0][0]  // 1 -> 2
-[ ][1][1][0][0][0]  // 1 -> 4
-[0][1][0][ ][1][0]  // 3 -> 4
-[1][0][0][ ][ ][0]  // 3 -> 5
+[ ][1][0][1][1][0] // 0 -> 1
+[1][1][1][ ][0][0] // 0 -> 3
+[ ][0][ ][1][0][0] // 1 -> 2
+[ ][1][1][0][0][0] // 1 -> 4
+[0][1][0][ ][1][0] // 3 -> 4
+[1][0][0][ ][ ][0] // 3 -> 5
 ```
 
 See how shortest-paths information spreads like wildfire? just like gossiping!
@@ -437,12 +474,12 @@ After all iterations are done, the matrix will look like this:
 ```
 
 ```
-[0][1][0][1][1][0]  // 0 -> 1
-[1][1][1][0][0][0]  // 0 -> 3
-[0][0][0][1][0][0]  // 1 -> 2
-[1][1][1][0][0][0]  // 1 -> 4
-[0][1][0][0][1][0]  // 3 -> 4
-[1][0][0][0][0][0]  // 3 -> 5
+[0][1][0][1][1][0] // 0 -> 1
+[1][1][1][0][0][0] // 0 -> 3
+[0][0][0][1][0][0] // 1 -> 2
+[1][1][1][0][0][0] // 1 -> 4
+[0][1][0][0][1][0] // 3 -> 4
+[1][0][0][0][0][0] // 3 -> 5
 ```
 
 Now, how do we use this data to retrieve the shortest path between two nodes?
@@ -454,7 +491,7 @@ Let's say we want to find the shortest path between node `2` and node `5`.
 Flip `1->2` to view bits of `2->1`.
 
 ```
-[1][1][1][0][1][1]  // 2 -> 1
+[1][1][1][0][1][1] // 2 -> 1
 ```
 
 We see that the bit 5 is set, so we move to node `1`.
@@ -462,9 +499,9 @@ We see that the bit 5 is set, so we move to node `1`.
 2. Check the edges of `1` at bit `5`.
 
 ```
-[1][0][1][0][0][1]  // 1 -> 0
-[0][0][0][1][0][0]  // 1 -> 2
-[1][1][1][0][0][0]  // 1 -> 4
+[1][0][1][0][0][1] // 1 -> 0
+[0][0][0][1][0][0] // 1 -> 2
+[1][1][1][0][0][0] // 1 -> 4
 ```
 
 We see that both `1->0` and `1->4` have bit 5 set; at this point, we can either move to `0` or `4`.
@@ -473,8 +510,8 @@ Both will give the equal shortest path.
 Let's move to `4`.
 
 ```
-[0][0][0][1][1][1]  // 4 -> 1
-[1][0][1][1][0][1]  // 4 -> 3
+[0][0][0][1][1][1] // 4 -> 1
+[1][0][1][1][0][1] // 4 -> 3
 ```
 
 We see that the bit 5 is set for `4->3`, so we move to node `3`.
@@ -482,9 +519,9 @@ We see that the bit 5 is set for `4->3`, so we move to node `3`.
 3. Check the edges of `3` at bit `5`.
 
 ```
-[0][0][0][1][1][1]  // 3 -> 0
-[0][1][0][0][1][0]  // 3 -> 4
-[1][0][0][0][0][0]  // 3 -> 5
+[0][0][0][1][1][1] // 3 -> 0
+[0][1][0][0][1][0] // 3 -> 4
+[1][0][0][0][0][0] // 3 -> 5
 ```
 
 We see that the bit 5 is set for `3->5`, so we move to node `5`.

@@ -133,6 +133,18 @@ impl BitVec {
             self.0.pop();
         }
     }
+
+    /// Truncate the size of the bitvec to the given length of bits.
+    pub fn truncate(&mut self, bit_len: usize) {
+        let (i, j) = (bit_len / BITS, bit_len % BITS);
+        self.0.truncate(i + (j > 0) as usize);
+
+        if j > 0 {
+            if let Some(last) = self.0.last_mut() {
+                *last &= Digit::MAX >> (BITS - j);
+            }
+        }
+    }
 }
 
 impl BitVec {

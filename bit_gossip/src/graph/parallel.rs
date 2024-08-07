@@ -240,6 +240,20 @@ impl<NodeId: U16orU32> ParaGraphBuilder<NodeId> {
         }
     }
 
+    /// Resize the graph to the given number of nodes.
+    ///
+    /// All edges that are connected to nodes that are removed will also be removed.
+    pub fn resize(&mut self, nodes_len: usize) {
+        let should_truncate = nodes_len < self.nodes.len();
+
+        self.nodes.resize(nodes_len);
+
+        if should_truncate {
+            self.edges.truncate(nodes_len);
+            self.edge_masks.truncate(nodes_len);
+        }
+    }
+
     /// Add an edge between node_a and node_b
     pub fn connect(&mut self, a: NodeId, b: NodeId) {
         self.nodes.connect(a, b);
@@ -579,10 +593,12 @@ impl<NodeId: U16orU32> Nodes<NodeId> {
         }
     }
 
+    #[inline]
     pub fn resize(&mut self, nodes_len: usize) {
+        let prev_len = self.inner.len();
         self.inner.resize(nodes_len, vec![]);
 
-        if nodes_len < self.inner.len() {
+        if nodes_len < prev_len {
             let nodes_len = NodeId::from_usize(nodes_len);
 
             for neighbors in self.inner.iter_mut() {
@@ -677,6 +693,24 @@ impl<NodeId: U16orU32> Edges<NodeId> {
     pub fn update(&self, edge_id: (NodeId, NodeId), val: BitVec) {
         if let Some(bits) = self.inner.get(&edge_id) {
             bits.bitor_assign(&val);
+        }
+    }
+
+    /// Truncate the edges to the given length of nodes.
+    pub fn truncate(&mut self, nodes_len: usize) {
+        let keys_to_remove = self
+            .inner
+            .keys()
+            .filter(|&(a, b)| a.as_usize() >= nodes_len || b.as_usize() >= nodes_len)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        for key in keys_to_remove {
+            self.inner.remove(&key);
+        }
+
+        for edge in self.inner.values_mut() {
+            edge.truncate(nodes_len);
         }
     }
 }

@@ -314,6 +314,20 @@ macro_rules! impl_prim {
                     }
                 }
 
+                /// Resize the graph to the given number of nodes.
+                ///
+                /// All edges that are connected to nodes that are removed will also be removed.
+                pub fn resize(&mut self, new_len: u8) {
+                    let should_truncate = new_len < self.nodes.len() as u8;
+
+                    self.nodes.resize(new_len as usize);
+
+                    if should_truncate {
+                        self.edges.truncate(new_len);
+                        self.edge_masks.truncate(new_len);
+                    }
+                }
+
                 /// Add a edge between node_a and node_b
                 pub fn connect(&mut self, a: $node_id, b: $node_id) {
                     // if the edge already exists, return
@@ -644,6 +658,11 @@ macro_rules! impl_prim {
                 pub fn len(&self) -> usize {
                     self.inner.len()
                 }
+
+                #[inline]
+                pub fn resize(&mut self, new_len: usize) {
+                    self.inner.resize(new_len, 0);
+                }
             }
 
             /// Map of edges and bits indicating if the edge is the shortest path to the node.
@@ -674,6 +693,24 @@ macro_rules! impl_prim {
                         *edge |= val;
                     } else {
                         self.inner.insert(edge_id, val);
+                    }
+                }
+
+                /// Truncate the edges to the given length of nodes.
+                pub fn truncate(&mut self, nodes_len: u8) {
+                    let keys_to_remove = self
+                        .inner
+                        .keys()
+                        .filter(|&(a, b)| *a >= nodes_len || *b >= nodes_len)
+                        .cloned()
+                        .collect::<Vec<_>>();
+
+                    for key in keys_to_remove {
+                        self.inner.remove(&key);
+                    }
+
+                    for edge in self.inner.values_mut() {
+                        *edge &= (1 << nodes_len) - 1;
                     }
                 }
             }
